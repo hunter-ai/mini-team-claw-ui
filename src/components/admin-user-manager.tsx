@@ -25,12 +25,14 @@ type GatewayPairingSummary = {
     clientPlatform: string | null;
     message: string | null;
   }>;
-}
+};
 
 export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }) {
   const [users, setUsers] = useState(initialUsers);
   const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [actionUserId, setActionUserId] = useState<string | null>(null);
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     username: "",
     password: "",
@@ -48,7 +50,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
 
   async function createUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
+    setCreateLoading(true);
     setMessage(null);
 
     const response = await fetch("/api/admin/users", {
@@ -57,7 +59,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
       body: JSON.stringify(form),
     });
 
-    setLoading(false);
+    setCreateLoading(false);
 
     const payload = (await response.json().catch(() => ({}))) as {
       error?: string;
@@ -88,6 +90,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
 
   async function toggleUser(user: AdminUser) {
     setMessage(null);
+    setActionUserId(user.id);
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -96,13 +99,71 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
       }),
     });
 
+    setActionUserId(null);
+
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       setMessage(payload.error ?? "Failed to update member");
       return;
     }
 
+    setMessage(user.isActive ? "Member disabled" : "Member enabled");
     await refreshUsers();
+  }
+
+  async function resetPassword(user: AdminUser) {
+    const password = passwordDrafts[user.id]?.trim() ?? "";
+    if (password.length < 8) {
+      setMessage("New password must be at least 8 characters.");
+      return;
+    }
+
+    setMessage(null);
+    setActionUserId(user.id);
+    const response = await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    setActionUserId(null);
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setMessage(payload.error ?? "Failed to reset password");
+      return;
+    }
+
+    setPasswordDrafts((current) => ({ ...current, [user.id]: "" }));
+    setMessage(`Password reset for ${user.username}. Existing sessions were signed out.`);
+    await refreshUsers();
+  }
+
+  async function deleteUser(user: AdminUser) {
+    if (user.isActive) {
+      setMessage("Only disabled users can be deleted.");
+      return;
+    }
+
+    setMessage(null);
+    setActionUserId(user.id);
+    const response = await fetch(`/api/admin/users/${user.id}`, {
+      method: "DELETE",
+    });
+    setActionUserId(null);
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setMessage(payload.error ?? "Failed to delete user");
+      return;
+    }
+
+    setUsers((current) => current.filter((candidate) => candidate.id !== user.id));
+    setPasswordDrafts((current) => {
+      const next = { ...current };
+      delete next[user.id];
+      return next;
+    });
+    setMessage(`Deleted ${user.username}.`);
   }
 
   return (
@@ -118,21 +179,61 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
           {users.map((user) => (
             <div
               key={user.id}
-              className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/20 px-4 py-3"
+              className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4"
             >
-              <div>
-                <p className="font-medium text-stone-100">{user.username}</p>
-                <p className="text-sm text-stone-400">
-                  {user.openclawAgentId} · {user.role}
-                </p>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="font-medium text-stone-100">{user.username}</p>
+                  <p className="text-sm text-stone-400">
+                    {user.openclawAgentId} · {user.role} · {user.isActive ? "Active" : "Disabled"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleUser(user)}
+                    disabled={actionUserId === user.id}
+                    className="rounded-full border border-white/12 px-3 py-2 text-sm text-stone-200 transition hover:border-amber-400 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {actionUserId === user.id ? "Saving..." : user.isActive ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteUser(user)}
+                    disabled={user.isActive || actionUserId === user.id}
+                    title={user.isActive ? "Only disabled users can be deleted." : undefined}
+                    className="rounded-full border border-red-400/25 px-3 py-2 text-sm text-red-200 transition hover:border-red-300 hover:text-red-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                  >
+                    Delete user
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => toggleUser(user)}
-                className="rounded-full border border-white/12 px-3 py-2 text-sm text-stone-200 transition hover:border-amber-400 hover:text-amber-200"
-              >
-                {user.isActive ? "Disable" : "Enable"}
-              </button>
+              <div className="mt-4 flex flex-col gap-2 md:flex-row">
+                <input
+                  type="password"
+                  minLength={8}
+                  value={passwordDrafts[user.id] ?? ""}
+                  onChange={(event) =>
+                    setPasswordDrafts((current) => ({
+                      ...current,
+                      [user.id]: event.target.value,
+                    }))
+                  }
+                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none placeholder:text-stone-500 focus:border-amber-400"
+                  placeholder="new password"
+                />
+                <button
+                  type="button"
+                  onClick={() => resetPassword(user)}
+                  disabled={actionUserId === user.id}
+                  className="rounded-2xl border border-amber-400/30 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:border-amber-300 hover:text-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Force reset password
+                </button>
+              </div>
+              {user.isActive ? (
+                <p className="mt-2 text-xs text-stone-500">Only disabled users can be deleted.</p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -175,10 +276,10 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
           </select>
           <button
             type="submit"
-            disabled={loading}
+            disabled={createLoading}
             className="rounded-2xl bg-amber-400 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-300 disabled:bg-amber-100"
           >
-            {loading ? "Creating..." : "Create member"}
+            {createLoading ? "Creating..." : "Create member"}
           </button>
         </form>
         {message ? <p className="mt-3 text-sm text-stone-300">{message}</p> : null}
