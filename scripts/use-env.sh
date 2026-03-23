@@ -5,15 +5,21 @@ MODE="${1:-}"
 
 case "$MODE" in
   dev)
-    cp .env.dev .env
-    echo "Switched .env -> .env.dev"
+    SOURCE=".env.dev.example"
     ;;
   docker)
-    cp .env.docker .env
-    echo "Switched .env -> .env.docker"
+    SOURCE=".env.docker.example"
     ;;
   *)
     echo "Usage: ./scripts/use-env.sh [dev|docker]" >&2
     exit 1
     ;;
 esac
+
+if [ ! -f "$SOURCE" ]; then
+  echo "Missing template $SOURCE" >&2
+  exit 1
+fi
+
+cp "$SOURCE" .env
+echo "Switched .env -> $SOURCE"
