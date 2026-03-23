@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { v4 as uuidv4 } from "uuid";
 import type {
   ClientChatRunEvent,
   ClientRunActivityEntry,
@@ -1698,7 +1699,7 @@ export function ChatShell({
 
     const inputText = trimmedText ? currentText : "";
     const attachmentIds = selectedAttachments.map((attachment) => attachment.id);
-    const clientRequestId = crypto.randomUUID();
+    const clientRequestId = uuidv4();
     const targetSessionId = activeSessionId;
     const optimisticRun: SessionRun = {
       id: `pending:${clientRequestId}`,
