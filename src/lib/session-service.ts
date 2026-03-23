@@ -1,21 +1,113 @@
 import { randomUUID } from "node:crypto";
-import { MessageRole, SessionStatus, User } from "@prisma/client";
+import { MessageRole, Prisma, SessionStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-export async function listChatSessions(userId: string) {
-  return prisma.chatSession.findMany({
+export const SESSION_PAGE_SIZE = 30;
+
+type SessionCursorPayload = {
+  id: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+};
+
+type ListChatSessionsOptions = {
+  limit?: number;
+  cursor?: string | null;
+};
+
+const sessionOrderBy = [
+  { lastMessageAt: { sort: "desc" as const, nulls: "last" as const } },
+  { updatedAt: "desc" as const },
+  { id: "desc" as const },
+];
+
+export function encodeSessionCursor(cursor: SessionCursorPayload) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+export function decodeSessionCursor(cursor: string) {
+  const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as SessionCursorPayload;
+  if (!parsed.id || !parsed.updatedAt || !("lastMessageAt" in parsed)) {
+    throw new Error("Invalid cursor");
+  }
+  return parsed;
+}
+
+function buildSessionCursorWhere(cursor: SessionCursorPayload): Prisma.ChatSessionWhereInput {
+  const updatedAt = new Date(cursor.updatedAt);
+  const lastMessageAt = cursor.lastMessageAt ? new Date(cursor.lastMessageAt) : null;
+
+  if (Number.isNaN(updatedAt.getTime()) || (cursor.lastMessageAt && Number.isNaN(lastMessageAt!.getTime()))) {
+    throw new Error("Invalid cursor");
+  }
+
+  if (!lastMessageAt) {
+    return {
+      lastMessageAt: null,
+      OR: [
+        { updatedAt: { lt: updatedAt } },
+        {
+          updatedAt,
+          id: { lt: cursor.id },
+        },
+      ],
+    };
+  }
+
+  return {
+    OR: [
+      { lastMessageAt: { lt: lastMessageAt } },
+      {
+        lastMessageAt,
+        updatedAt: { lt: updatedAt },
+      },
+      {
+        lastMessageAt,
+        updatedAt,
+        id: { lt: cursor.id },
+      },
+      { lastMessageAt: null },
+    ],
+  };
+}
+
+export async function listChatSessions(userId: string, options: ListChatSessionsOptions = {}) {
+  const limit = Math.min(Math.max(options.limit ?? SESSION_PAGE_SIZE, 1), 100);
+  const cursorWhere = options.cursor ? buildSessionCursorWhere(decodeSessionCursor(options.cursor)) : null;
+
+  const sessions = await prisma.chatSession.findMany({
     where: {
       userId,
       status: SessionStatus.ACTIVE,
+      ...(cursorWhere ? { AND: [cursorWhere] } : {}),
     },
-    orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    orderBy: sessionOrderBy,
     include: {
       messages: {
         orderBy: { createdAt: "asc" },
         take: 1,
       },
     },
+    take: limit + 1,
   });
+
+  const hasMore = sessions.length > limit;
+  const items = hasMore ? sessions.slice(0, limit) : sessions;
+  const lastItem = items.at(-1);
+
+  return {
+    sessions: items,
+    pageInfo: {
+      hasMore,
+      nextCursor: lastItem
+        ? encodeSessionCursor({
+            id: lastItem.id,
+            updatedAt: lastItem.updatedAt.toISOString(),
+            lastMessageAt: lastItem.lastMessageAt?.toISOString() ?? null,
+          })
+        : null,
+    },
+  };
 }
 
 export async function createChatSession(user: Pick<User, "id" | "openclawAgentId">) {

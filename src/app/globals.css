@@ -15,6 +15,8 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 191, 36, 0.26) rgba(255, 255, 255, 0.04);
 }
 
 html {
@@ -29,6 +31,31 @@ body {
   min-height: 100vh;
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.42), rgba(251, 146, 60, 0.3));
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.58), rgba(251, 146, 60, 0.42));
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 a {
@@ -94,6 +121,12 @@ select {
   padding: 1rem;
 }
 
+.markdown-body pre,
+.markdown-body table {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 191, 36, 0.35) rgba(255, 255, 255, 0.04);
+}
+
 .markdown-body pre code {
   background: transparent;
   padding: 0;
@@ -108,7 +141,9 @@ select {
 .markdown-body table {
   width: 100%;
   border-collapse: collapse;
+  display: block;
   overflow: hidden;
+  overflow-x: auto;
   border-radius: 0.9rem;
 }
 
