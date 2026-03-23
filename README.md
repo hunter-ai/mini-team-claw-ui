@@ -1,6 +1,6 @@
 # MiniTeamClawUI
 
-Mobile-first WebUI for sharing a single host OpenClaw gateway across a small team, with per-member login, per-member agent mapping, multi-session chat, attachment prompts, and PWA support.
+ Mobile-first WebUI for sharing a single host OpenClaw gateway across a small team, with per-member login, per-member agent mapping, multi-session chat, and attachment prompts.
 
 ## Stack
 
