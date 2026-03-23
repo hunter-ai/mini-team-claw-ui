@@ -23,6 +23,14 @@ enum MessageRole {
   SYSTEM
 }
 
+enum ChatRunStatus {
+  STARTING
+  STREAMING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
 model User {
   id              String        @id @default(cuid())
   username        String        @unique
@@ -32,6 +40,7 @@ model User {
   isActive        Boolean       @default(true)
   sessions        UserSession[]
   chatSessions    ChatSession[]
+  chatRuns        ChatRun[]
   attachments     Attachment[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -61,6 +70,7 @@ model ChatSession {
   updatedAt         DateTime           @updatedAt
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages          ChatMessageCache[]
+  runs              ChatRun[]
   attachments       Attachment[]
 
   @@index([userId, updatedAt])
@@ -94,6 +104,46 @@ model Attachment {
 
   @@index([userId, createdAt])
   @@index([sessionId])
+}
+
+model ChatRun {
+  id                   String         @id @default(cuid())
+  sessionId            String
+  userId               String
+  clientRequestId      String
+  userMessageId        String?        @unique
+  assistantMessageId   String?        @unique
+  gatewayRunId         String?
+  idempotencyKey       String         @unique
+  status               ChatRunStatus  @default(STARTING)
+  startedAt            DateTime       @default(now())
+  endedAt              DateTime?
+  lastEventSeq         Int            @default(0)
+  draftAssistantContent String        @default("")
+  errorMessage         String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  session              ChatSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events               ChatRunEvent[]
+
+  @@unique([sessionId, clientRequestId])
+  @@index([sessionId, status, createdAt])
+  @@index([userId, status, createdAt])
+}
+
+model ChatRunEvent {
+  id          String   @id @default(cuid())
+  runId        String
+  seq         Int
+  type        String
+  delta       String?
+  payloadJson Json?
+  createdAt   DateTime @default(now())
+  run         ChatRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, seq])
+  @@index([runId, createdAt])
 }
 
 model GatewayOperatorIdentity {

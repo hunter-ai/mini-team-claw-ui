@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { serializeSessionSummary } from "@/lib/chat-response";
 import { createChatSession, listChatSessions, SESSION_PAGE_SIZE } from "@/lib/session-service";
 
 export async function GET(request: Request) {
@@ -18,12 +19,7 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({
-    sessions: sessions.map((session) => ({
-      id: session.id,
-      title: session.title,
-      updatedAt: session.updatedAt.toISOString(),
-      lastMessageAt: session.lastMessageAt?.toISOString() ?? null,
-    })),
+    sessions: sessions.map(serializeSessionSummary),
     pageInfo,
   });
 }
@@ -35,11 +31,6 @@ export async function POST() {
   }
   const session = await createChatSession(user);
   return NextResponse.json({
-    session: {
-      id: session.id,
-      title: session.title,
-      updatedAt: session.updatedAt.toISOString(),
-      lastMessageAt: session.lastMessageAt?.toISOString() ?? null,
-    },
+    session: serializeSessionSummary({ ...session, runs: [] }),
   });
 }

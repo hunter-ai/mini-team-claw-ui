@@ -1,23 +1,32 @@
 import { NextResponse } from "next/server";
-import { MessageRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { toChatMessageViews } from "@/lib/chat-presenter";
-import { buildOpenClawInput, sendToOpenClaw } from "@/lib/openclaw/chat";
-import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
-import { prisma } from "@/lib/prisma";
+import { serializeActiveRun, serializeSessionSummary } from "@/lib/chat-response";
+import { chatRunManager } from "@/lib/chat-run-manager";
 import {
-  addCachedMessage,
-  getChatSessionForUser,
-  touchSession,
-} from "@/lib/session-service";
+  ActiveChatRunConflictError,
+  createChatRunForMessage,
+  getChatRunByClientRequestId,
+} from "@/lib/chat-run-service";
+import { prisma } from "@/lib/prisma";
+import { getChatSessionForUser } from "@/lib/session-service";
 
 export const runtime = "nodejs";
 
 const schema = z.object({
   message: z.string().default(""),
   attachmentIds: z.array(z.string()).default([]),
+  clientRequestId: z.string().min(1),
 });
+
+function logMessagesRouteDebug(message: string, details: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  console.debug(message, details);
+}
 
 function buildTitleSource(message: string, attachmentNames: string[]) {
   const trimmed = message.trim();
@@ -40,6 +49,7 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   const { sessionId } = await params;
   const session = await getChatSessionForUser(user.id, sessionId);
 
@@ -48,11 +58,9 @@ export async function GET(
   }
 
   return NextResponse.json({
-    session: {
-      id: session.id,
-      title: session.title,
-    },
+    session: serializeSessionSummary(session),
     messages: toChatMessageViews(session.messages, session.attachments),
+    activeRun: serializeActiveRun(session.runs[0] ?? null),
   });
 }
 
@@ -64,6 +72,7 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   const { sessionId } = await params;
   const payload = schema.safeParse(await request.json().catch(() => null));
 
@@ -83,12 +92,30 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  console.log("[api/messages] request", {
-    sessionId: session.id,
-    agentId: session.agentId,
-    openclawSessionId: session.openclawSessionId,
-    userId: user.id,
-  });
+  const existingRun = await getChatRunByClientRequestId(
+    user.id,
+    session.id,
+    payload.data.clientRequestId,
+  );
+
+  if (existingRun) {
+    logMessagesRouteDebug("[chat-debug][api/messages] reusing existing run", {
+      sessionId: session.id,
+      openclawSessionId: session.openclawSessionId,
+      userId: user.id,
+      runId: existingRun.id,
+      clientRequestId: payload.data.clientRequestId,
+      status: existingRun.status,
+      gatewayRunId: existingRun.gatewayRunId,
+      lastEventSeq: existingRun.lastEventSeq,
+    });
+
+    return NextResponse.json({
+      created: false,
+      run: serializeActiveRun(existingRun),
+      session: serializeSessionSummary(session),
+    });
+  }
 
   const attachmentRecords = attachmentIds.length
     ? await prisma.attachment.findMany({
@@ -125,134 +152,78 @@ export async function POST(
     }
   }
 
-  const input = buildOpenClawInput({
-    text: messageText,
-    attachments: orderedAttachmentRecords.map((attachment) => ({
-      id: attachment.id,
-      hostPath: attachment.hostPath,
-    })),
-  });
-  const encoder = new TextEncoder();
+  try {
+    logMessagesRouteDebug("[chat-debug][api/messages] creating run", {
+      sessionId: session.id,
+      openclawSessionId: session.openclawSessionId,
+      userId: user.id,
+      clientRequestId: payload.data.clientRequestId,
+      attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
+      messageLength: messageText.length,
+      hasAttachments: orderedAttachmentRecords.length > 0,
+    });
 
-  const userMessage = await addCachedMessage({
-    sessionId: session.id,
-    role: MessageRole.USER,
-    content: messageText,
-    attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
-  });
+    const result = await createChatRunForMessage({
+      sessionId: session.id,
+      userId: user.id,
+      titleSource:
+        session.messages.length === 0
+          ? buildTitleSource(
+              messageText,
+              orderedAttachmentRecords.map((attachment) => attachment.originalName),
+            )
+          : undefined,
+      message: messageText,
+      attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
+      clientRequestId: payload.data.clientRequestId,
+    });
 
-  console.log("[api/messages] prepared user message", {
-    sessionId: session.id,
-    userMessageId: userMessage.id,
-    attachmentIds: input.attachmentIds,
-    attachmentCount: input.attachmentIds.length,
-    sendMode: input.mode,
-  });
+    if (result.created) {
+      logMessagesRouteDebug("[chat-debug][api/messages] created run", {
+        sessionId: session.id,
+        openclawSessionId: session.openclawSessionId,
+        userId: user.id,
+        runId: result.run.id,
+        clientRequestId: result.run.clientRequestId,
+        idempotencyKey: result.run.idempotencyKey,
+        status: result.run.status,
+      });
+      void chatRunManager.startRun(result.run.id);
+      logMessagesRouteDebug("[chat-debug][api/messages] dispatched run manager", {
+        sessionId: session.id,
+        runId: result.run.id,
+        clientRequestId: result.run.clientRequestId,
+      });
+    }
 
-  await touchSession(
-    session.id,
-    session.messages.length === 0
-      ? buildTitleSource(
-          messageText,
-          orderedAttachmentRecords.map((attachment) => attachment.originalName),
-        )
-      : undefined,
-  );
+    const updatedSession = await getChatSessionForUser(user.id, session.id);
+    if (!updatedSession) {
+      return NextResponse.json({ error: "Session refresh failed" }, { status: 500 });
+    }
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const sendEvent = (event: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-      };
+    return NextResponse.json({
+      created: result.created,
+      run: serializeActiveRun(result.run),
+      session: serializeSessionSummary(updatedSession),
+    });
+  } catch (error) {
+    if (error instanceof ActiveChatRunConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
 
-      try {
-        const result = await sendToOpenClaw({
-          agentId: session.agentId,
-          openclawSessionId: session.openclawSessionId,
-          message: input.message,
-          onDelta: (delta) => {
-            sendEvent({ type: "delta", delta });
-          },
-        });
-
-        const finalContent = result.content || "OpenClaw completed without returning text.";
-        const assistantMessage = await addCachedMessage({
-          sessionId: session.id,
-          role: MessageRole.ASSISTANT,
-          content: finalContent,
-        });
-
-        await touchSession(session.id);
-
-        const updated = await getChatSessionForUser(user.id, session.id);
-        if (!updated) {
-          throw new Error("Session refresh failed");
-        }
-
-        sendEvent({
-          type: "done",
-          session: {
-            id: updated.id,
-            title: updated.title,
-            updatedAt: updated.updatedAt.toISOString(),
-            lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
-          },
-          assistantMessage: {
-            id: assistantMessage.id,
-            role: assistantMessage.role,
-            content: assistantMessage.content,
-            createdAt: assistantMessage.createdAt.toISOString(),
-          },
-          messages: toChatMessageViews(updated.messages, updated.attachments),
-        });
-      } catch (error) {
-        console.error("[api/messages] sendToOpenClaw failed", {
-          sessionId: session.id,
-          userMessageId: userMessage.id,
-          agentId: session.agentId,
-          openclawSessionId: session.openclawSessionId,
-          userId: user.id,
-          attachmentIds: input.attachmentIds,
-          attachmentCount: input.attachmentIds.length,
-          sendMode: input.mode,
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : { message: String(error) },
-        });
-        if (error instanceof OpenClawGatewayError && error.detailCode === "PAIRING_REQUIRED") {
-          sendEvent({
-            type: "pairing_required",
-            pairing: {
-              status: "pairing_required",
+    console.error("[api/messages] failed to create run", {
+      sessionId: session.id,
+      userId: user.id,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
               message: error.message,
-              deviceId:
-                typeof error.details?.deviceId === "string" ? error.details.deviceId : null,
-              lastPairedAt: null,
-              pendingRequests: error.pairingRequest ? [error.pairingRequest] : [],
-            },
-          });
-          return;
-        } else {
-          sendEvent({
-            type: "error",
-            error: error instanceof Error ? error.message : "Failed to send",
-          });
-        }
-      } finally {
-        controller.close();
-      }
-    },
-  });
+              stack: error.stack,
+            }
+          : { message: String(error) },
+    });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-    },
-  });
+    return NextResponse.json({ error: "Failed to start chat run" }, { status: 500 });
+  }
 }

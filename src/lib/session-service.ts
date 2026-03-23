@@ -1,8 +1,28 @@
 import { randomUUID } from "node:crypto";
-import { MessageRole, Prisma, SessionStatus, User } from "@prisma/client";
+import { ChatRunStatus, MessageRole, Prisma, SessionStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_PAGE_SIZE = 30;
+export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
+
+const activeRunInclude = {
+  runs: {
+    where: {
+      status: {
+        in: [...ACTIVE_CHAT_RUN_STATUSES],
+      },
+    },
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
+};
+
+const latestRunInclude = {
+  runs: {
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
+};
 
 type SessionCursorPayload = {
   id: string;
@@ -87,6 +107,7 @@ export async function listChatSessions(userId: string, options: ListChatSessions
         orderBy: { createdAt: "asc" },
         take: 1,
       },
+      ...activeRunInclude,
     },
     take: limit + 1,
   });
@@ -134,6 +155,7 @@ export async function getChatSessionForUser(userId: string, sessionId: string) {
       attachments: {
         orderBy: { createdAt: "desc" },
       },
+      ...latestRunInclude,
     },
   });
 }

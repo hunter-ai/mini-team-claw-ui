@@ -35,11 +35,14 @@ type GatewayEvent = {
 
 export type ChatResult = {
   content: string;
+  runId: string | null;
+  status: string | null;
 };
 
 type StreamHandlers = {
-  onDelta?: (delta: string) => void;
-  onError?: (message: string) => void;
+  onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
+  onDelta?: (delta: string) => void | Promise<void>;
+  onError?: (message: string) => void | Promise<void>;
 };
 
 type GatewayConnectProfile = {
@@ -221,6 +224,152 @@ function extractPairingRequest(details: Record<string, unknown> | null, fallback
       readString(details?.clientPlatform) ?? readString(details?.client_platform) ?? null,
     message: fallbackMessage ?? readString(details?.message) ?? null,
   };
+}
+
+function readNestedString(
+  record: Record<string, unknown> | null,
+  ...keys: string[]
+) {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = readString(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function extractChatSendAck(payload: Record<string, unknown> | undefined) {
+  const root = asRecord(payload) ?? {};
+  const data = asRecord(root.data);
+  const run = asRecord(root.run) ?? asRecord(data?.run);
+
+  return {
+    runId:
+      readNestedString(root, "runId", "run_id") ??
+      readNestedString(data, "runId", "run_id") ??
+      readNestedString(run, "id", "runId", "run_id"),
+    status:
+      readNestedString(root, "status") ??
+      readNestedString(data, "status") ??
+      readNestedString(run, "status"),
+    reply:
+      readNestedString(root, "reply", "content", "message") ??
+      readNestedString(data, "reply", "content", "message"),
+  };
+}
+
+function extractChatEventScope(payload: Record<string, unknown> | undefined) {
+  const root = asRecord(payload) ?? {};
+  const data = asRecord(root.data);
+  const meta = asRecord(root.meta);
+  const run = asRecord(root.run) ?? asRecord(data?.run);
+  const session = asRecord(root.session) ?? asRecord(data?.session);
+
+  return {
+    runId:
+      readNestedString(root, "runId", "run_id") ??
+      readNestedString(data, "runId", "run_id") ??
+      readNestedString(meta, "runId", "run_id") ??
+      readNestedString(run, "id", "runId", "run_id"),
+    sessionKey:
+      readNestedString(root, "sessionKey", "session_key", "key") ??
+      readNestedString(data, "sessionKey", "session_key", "key") ??
+      readNestedString(meta, "sessionKey", "session_key", "key") ??
+      readNestedString(session, "key", "sessionKey", "session_key"),
+  };
+}
+
+function shouldConsumeChatEvent(
+  frame: GatewayEvent,
+  target: {
+    runId: string | null;
+    sessionKey: string;
+  },
+) {
+  if (!["agent", "chat"].includes(frame.event)) {
+    return false;
+  }
+
+  const scope = extractChatEventScope(frame.payload);
+  if (target.runId && scope.runId) {
+    return scope.runId === target.runId;
+  }
+
+  if (!scope.runId && scope.sessionKey) {
+    return scope.sessionKey === target.sessionKey;
+  }
+
+  return false;
+}
+
+function truncate(value: string, maxLength = 120) {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
+}
+
+function summarizeGatewayValue(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") {
+    return truncate(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean" || value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    if (depth >= 2) {
+      return `[array:${value.length}]`;
+    }
+
+    return value.slice(0, 5).map((item) => summarizeGatewayValue(item, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    if (depth >= 2) {
+      return "[object]";
+    }
+
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).slice(0, 12).map(([key, entryValue]) => [
+        key,
+        summarizeGatewayValue(entryValue, depth + 1),
+      ]),
+    );
+  }
+
+  return String(value);
+}
+
+function summarizeGatewayFrame(frame: GatewayEvent) {
+  const payload = asRecord(frame.payload);
+  const data = asRecord(payload?.data);
+  const stream = readString(payload?.stream);
+  const phase = readString(data?.phase);
+  const delta = readString(data?.delta);
+  const scope = extractChatEventScope(frame.payload);
+
+  return {
+    event: frame.event,
+    stream,
+    phase,
+    scope,
+    deltaLength: delta?.length ?? 0,
+    deltaPreview: delta ? truncate(delta, 80) : null,
+    payload: summarizeGatewayValue(frame.payload),
+  };
+}
+
+function logGatewayDebug(message: string, details: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  console.debug(message, details);
 }
 
 export class OpenClawGatewayError extends Error {
@@ -434,8 +583,14 @@ export class OpenClawGatewayClient {
     }
   }
 
-  async sendMessage(sessionKey: string, message: string, handlers?: StreamHandlers) {
+  async sendMessage(
+    sessionKey: string,
+    message: string,
+    handlers?: StreamHandlers,
+    options?: { idempotencyKey?: string },
+  ) {
     const reqId = randomUUID();
+    const idempotencyKey = options?.idempotencyKey ?? `msg-${randomUUID()}`;
     await this.send({
       type: "req",
       id: reqId,
@@ -443,11 +598,156 @@ export class OpenClawGatewayClient {
       params: {
         sessionKey,
         message,
-        idempotencyKey: `msg-${randomUUID()}`,
+        idempotencyKey,
       },
     });
 
     let output = "";
+    let runId: string | null = null;
+    let status: string | null = null;
+    let ignoredEventCount = 0;
+    let acceptedEventCount = 0;
+    const bufferedEvents: GatewayEvent[] = [];
+
+    logGatewayDebug("[chat-debug][gateway] sent chat.send", {
+      reqId,
+      sessionKey,
+      idempotencyKey,
+      messageLength: message.length,
+    });
+
+    while (true) {
+      const frame = await this.receive();
+      if (frame.type === "res" && frame.id === reqId) {
+        if (!frame.ok) {
+          const message = frame.error?.message ?? "chat.send failed";
+          const detailCode =
+            typeof frame.error?.details?.code === "string" ? frame.error.details.code : null;
+          console.error("[openclaw] chat.send failed", {
+            sessionKey,
+            code: frame.error?.code ?? null,
+            detailCode,
+            message,
+          });
+          throw new Error(this.formatRequestError("chat.send", message, detailCode));
+        }
+
+        const ack = extractChatSendAck(frame.payload);
+        runId = ack.runId;
+        status = ack.status;
+        logGatewayDebug("[chat-debug][gateway] received chat.send ack", {
+          sessionKey,
+          reqId,
+          idempotencyKey,
+          runId,
+          status,
+          replyLength: ack.reply?.length ?? 0,
+          payload: summarizeGatewayValue(frame.payload),
+        });
+        await handlers?.onStarted?.({ runId, status });
+
+        if (status === "ok" && ack.reply) {
+          output = ack.reply;
+          return {
+            content: output,
+            runId,
+            status,
+          } satisfies ChatResult;
+        }
+
+        break;
+      }
+
+      if (frame.type === "event") {
+        bufferedEvents.push(frame);
+      }
+    }
+
+    if (bufferedEvents.length > 0) {
+      logGatewayDebug("[chat-debug][gateway] buffered pre-ack events", {
+        reqId,
+        sessionKey,
+        idempotencyKey,
+        bufferedEventCount: bufferedEvents.length,
+        sample: bufferedEvents.slice(0, 3).map((frame) => summarizeGatewayFrame(frame)),
+      });
+    }
+
+    const consumeEvent = async (frame: GatewayEvent) => {
+      const matches = shouldConsumeChatEvent(frame, { runId, sessionKey });
+      const summary = summarizeGatewayFrame(frame);
+
+      if (!matches) {
+        ignoredEventCount += 1;
+        if (ignoredEventCount <= 5 || ignoredEventCount % 25 === 0) {
+          logGatewayDebug("[chat-debug][gateway] ignored event", {
+            reqId,
+            sessionKey,
+            idempotencyKey,
+            runId,
+            ignoredEventCount,
+            event: summary,
+          });
+        }
+        return false;
+      }
+
+      acceptedEventCount += 1;
+      if (acceptedEventCount <= 5 || summary.stream === "lifecycle" || acceptedEventCount % 25 === 0) {
+        logGatewayDebug("[chat-debug][gateway] accepted event", {
+          reqId,
+          sessionKey,
+          idempotencyKey,
+          runId,
+          acceptedEventCount,
+          event: summary,
+        });
+      }
+
+      const payload = frame.payload ?? {};
+      const stream = payload.stream;
+      const data = (payload.data as Record<string, unknown> | undefined) ?? {};
+
+      if (stream === "assistant" && typeof data.delta === "string") {
+        output += data.delta;
+        await handlers?.onDelta?.(data.delta);
+      }
+
+      if (stream === "lifecycle" && String(data.phase ?? "") === "error") {
+        status = "error";
+        await handlers?.onError?.(
+          typeof data.message === "string" ? data.message : "OpenClaw stream error",
+        );
+      }
+
+      if (stream === "lifecycle" && ["end", "error"].includes(String(data.phase ?? ""))) {
+        status = String(data.phase ?? status ?? "ok");
+        return true;
+      }
+
+      return false;
+    };
+
+    for (const frame of bufferedEvents) {
+      const done = await consumeEvent(frame);
+      if (done) {
+        logGatewayDebug("[chat-debug][gateway] stream complete from buffered event", {
+          sessionKey,
+          reqId,
+          idempotencyKey,
+          runId,
+          status,
+          acceptedEventCount,
+          ignoredEventCount,
+          outputLength: output.length,
+        });
+        return {
+          content: output,
+          runId,
+          status,
+        } satisfies ChatResult;
+      }
+    }
 
     while (true) {
       const frame = await this.receive();
@@ -468,29 +768,23 @@ export class OpenClawGatewayClient {
         continue;
       }
 
-      if (!["agent", "chat"].includes(frame.event)) {
-        continue;
-      }
-
-      const payload = frame.payload ?? {};
-      const stream = payload.stream;
-      const data = (payload.data as Record<string, unknown> | undefined) ?? {};
-
-      if (stream === "assistant" && typeof data.delta === "string") {
-        output += data.delta;
-        handlers?.onDelta?.(data.delta);
-      }
-
-      if (stream === "lifecycle" && String(data.phase ?? "") === "error") {
-        handlers?.onError?.(typeof data.message === "string" ? data.message : "OpenClaw stream error");
-      }
-
-      if (stream === "lifecycle" && ["end", "error"].includes(String(data.phase ?? ""))) {
+      if (await consumeEvent(frame)) {
         break;
       }
     }
 
-    return { content: output } satisfies ChatResult;
+    logGatewayDebug("[chat-debug][gateway] stream complete", {
+      sessionKey,
+      reqId,
+      idempotencyKey,
+      runId,
+      status,
+      acceptedEventCount,
+      ignoredEventCount,
+      outputLength: output.length,
+    });
+
+    return { content: output, runId, status } satisfies ChatResult;
   }
 
   async listPairingRequests() {

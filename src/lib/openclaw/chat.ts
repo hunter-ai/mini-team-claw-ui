@@ -15,6 +15,16 @@ export function buildSessionKey(agentId: string, openclawSessionId: string) {
   return `agent:${agentId}:${openclawSessionId}`;
 }
 
+export function composePrompt(message: string, hostPaths: string[]) {
+  return buildOpenClawInput({
+    text: message,
+    attachments: hostPaths.map((hostPath, index) => ({
+      id: String(index),
+      hostPath,
+    })),
+  }).message;
+}
+
 export function buildOpenClawInput({
   text,
   attachments,
@@ -44,21 +54,25 @@ export async function sendToOpenClaw({
   agentId,
   openclawSessionId,
   message,
+  idempotencyKey,
+  onStarted,
   onDelta,
   onError,
 }: {
   agentId: string;
   openclawSessionId: string;
   message: string;
-  onDelta?: (delta: string) => void;
-  onError?: (message: string) => void;
+  idempotencyKey?: string;
+  onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
+  onDelta?: (delta: string) => void | Promise<void>;
+  onError?: (message: string) => void | Promise<void>;
 }) {
   const client = new OpenClawGatewayClient();
   const sessionKey = buildSessionKey(agentId, openclawSessionId);
 
   try {
     await client.connect();
-    return await client.sendMessage(sessionKey, message, { onDelta, onError });
+    return await client.sendMessage(sessionKey, message, { onStarted, onDelta, onError }, { idempotencyKey });
   } finally {
     await client.close();
   }

@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { ClientChatRunEvent } from "@/lib/chat-run-events";
 import { formatRelativeDate } from "@/lib/utils";
 import { LogoutButton } from "@/components/logout-button";
 
-type Session = {
+type Attachment = {
   id: string;
-  title: string;
-  updatedAt: string;
-  lastMessageAt: string | null;
+  originalName: string;
+  mime: string;
+  size: number;
 };
 
 type Message = {
@@ -23,11 +25,40 @@ type Message = {
   attachments: Attachment[];
 };
 
-type Attachment = {
+type SessionRun = {
   id: string;
-  originalName: string;
-  mime: string;
-  size: number;
+  status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
+  clientRequestId: string;
+  assistantMessageId: string | null;
+  lastEventSeq: number;
+  draftAssistantContent: string;
+  errorMessage: string | null;
+  startedAt: string;
+  updatedAt: string;
+};
+
+type Session = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+  activeRun: SessionRun | null;
+};
+
+type PairingState = {
+  status: "pairing_required";
+  message: string;
+  deviceId: string | null;
+  lastPairedAt: string | null;
+  pendingRequests: Array<{
+    requestId: string | null;
+    requestedAt: string | null;
+    scopes: string[];
+    clientId: string | null;
+    clientMode: string | null;
+    clientPlatform: string | null;
+    message: string | null;
+  }>;
 };
 
 type UserShape = {
@@ -41,46 +72,21 @@ type SessionsPageInfo = {
   nextCursor: string | null;
 };
 
-type StreamEvent =
-  | {
-      type: "delta";
-      delta: string;
-    }
-  | {
-      type: "pairing_required";
-      pairing: {
-        status: "pairing_required";
-        message: string;
-        deviceId: string | null;
-        lastPairedAt: string | null;
-        pendingRequests: Array<{
-          requestId: string | null;
-          requestedAt: string | null;
-          scopes: string[];
-          clientId: string | null;
-          clientMode: string | null;
-          clientPlatform: string | null;
-          message: string | null;
-        }>;
-      };
-    }
-  | {
-      type: "done";
-      session: Session;
-      assistantMessage: Message;
-      messages: Message[];
-    }
-  | {
-      type: "error";
-      error: string;
-    };
+type RunState = "idle" | "starting" | "streaming" | "reconnecting" | "failed" | "aborted" | "completed";
+type StreamPayload = ClientChatRunEvent | { type: "ping"; runId: string; seq: null };
+type BufferedRunPatch = {
+  runId: string;
+  draftAssistantContent: string;
+  lastEventSeq: number;
+  updatedAt: string;
+};
 
-function parseStreamEvent(line: string) {
-  try {
-    return JSON.parse(line) as StreamEvent;
-  } catch {
-    throw new Error(`Invalid stream payload: ${line.slice(0, 160)}`);
+function logChatShellDebug(message: string, details: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
   }
+
+  console.debug(message, details);
 }
 
 function formatFileSize(size: number) {
@@ -98,6 +104,31 @@ function formatFileSize(size: number) {
   }
 
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function mapRunStatusToState(status: SessionRun["status"] | undefined | null): RunState {
+  switch (status) {
+    case "STARTING":
+      return "starting";
+    case "STREAMING":
+      return "streaming";
+    case "COMPLETED":
+      return "completed";
+    case "FAILED":
+      return "failed";
+    case "ABORTED":
+      return "aborted";
+    default:
+      return "idle";
+  }
+}
+
+function isRunBusy(state: RunState) {
+  return state === "starting" || state === "streaming" || state === "reconnecting";
+}
+
+function parseSsePayload(input: string) {
+  return JSON.parse(input) as StreamPayload;
 }
 
 function AttachmentBadge({
@@ -138,12 +169,24 @@ function AttachmentBadge({
   );
 }
 
-function MessageBody({ content, isUser }: { content: string; isUser: boolean }) {
+function MessageBody({
+  content,
+  isUser,
+  streaming = false,
+}: {
+  content: string;
+  isUser: boolean;
+  streaming?: boolean;
+}) {
   if (!content.trim()) {
     return null;
   }
 
   if (isUser) {
+    return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
+  }
+
+  if (streaming) {
     return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
   }
 
@@ -173,6 +216,7 @@ export function ChatShell({
   initialNextCursor,
   initialActiveSessionId,
   initialMessages,
+  initialActiveRun,
   user,
 }: {
   initialSessions: Session[];
@@ -180,32 +224,77 @@ export function ChatShell({
   initialNextCursor: string | null;
   initialActiveSessionId: string | null;
   initialMessages: Message[];
+  initialActiveRun: SessionRun | null;
   user: UserShape;
 }) {
   const pageSize = 30;
+  const pathname = usePathname();
   const [sessions, setSessions] = useState(initialSessions);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialActiveSessionId);
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [text, setText] = useState("");
-  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, Message[]>>(
+    initialActiveSessionId ? { [initialActiveSessionId]: initialMessages } : {},
+  );
+  const [composerBySession, setComposerBySession] = useState<Record<string, string>>({});
+  const [pendingAttachmentsBySession, setPendingAttachmentsBySession] = useState<Record<string, Attachment[]>>({});
+  const [runStateBySession, setRunStateBySession] = useState<Record<string, RunState>>(
+    initialActiveSessionId && initialActiveRun
+      ? { [initialActiveSessionId]: mapRunStatusToState(initialActiveRun.status) }
+      : {},
+  );
+  const [activeRunBySession, setActiveRunBySession] = useState<Record<string, SessionRun | null>>(
+    initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
+  );
+  const [uploadingBySession, setUploadingBySession] = useState<Record<string, boolean>>({});
+  const [errorBySession, setErrorBySession] = useState<Record<string, string | null>>({});
+  const [pairingBySession, setPairingBySession] = useState<Record<string, PairingState | null>>({});
+  const [loadedSessionIds, setLoadedSessionIds] = useState<Record<string, boolean>>(
+    initialActiveSessionId ? { [initialActiveSessionId]: true } : {},
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [pairing, setPairing] = useState<Extract<StreamEvent, { type: "pairing_required" }>["pairing"] | null>(null);
-  const abortController = useRef<AbortController | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
   const shouldSnapMessagesToBottomRef = useRef(true);
   const shouldStickMessagesToBottomRef = useRef(false);
   const isProgrammaticMessagesScrollRef = useRef(false);
+  const eventSourcesRef = useRef<Record<string, EventSource>>({});
+  const reconnectTimersRef = useRef<Record<string, number>>({});
+  const reconnectAttemptsRef = useRef<Record<string, number>>({});
+  const activeSessionIdRef = useRef<string | null>(initialActiveSessionId);
+  const flushTimersBySessionRef = useRef<Record<string, number>>({});
+  const bufferedRunPatchBySessionRef = useRef<Record<string, BufferedRunPatch>>({});
+  const lastEventSeqByRunRef = useRef<Record<string, number>>(
+    initialActiveRun ? { [initialActiveRun.id]: initialActiveRun.lastEventSeq } : {},
+  );
+  const activeRunBySessionRef = useRef<Record<string, SessionRun | null>>(
+    initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
+  );
+  const loadSessionRef = useRef<(sessionId: string, clearError?: boolean) => Promise<void>>(async () => {});
+
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, sessions],
+  );
+  const messages = useMemo(
+    () => (activeSessionId ? messagesBySession[activeSessionId] ?? [] : []),
+    [activeSessionId, messagesBySession],
+  );
+  const text = activeSessionId ? composerBySession[activeSessionId] ?? "" : "";
+  const pendingAttachments = activeSessionId ? pendingAttachmentsBySession[activeSessionId] ?? [] : [];
+  const activeRun = activeSessionId ? activeRunBySession[activeSessionId] ?? null : null;
+  const loading = activeSessionId ? isRunBusy(runStateBySession[activeSessionId] ?? "idle") : false;
+  const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
+  const error = activeSessionId ? errorBySession[activeSessionId] ?? null : null;
+  const pairing = activeSessionId ? pairingBySession[activeSessionId] ?? null : null;
+  const visibleDraftKey = activeRun
+    ? `${activeRun.id}:${activeRun.draftAssistantContent}:${activeRun.status}:${runStateBySession[activeSessionId ?? ""] ?? "idle"}`
+    : "idle";
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
@@ -229,28 +318,359 @@ export function ChatShell({
     return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
   }, []);
 
-  async function loadSession(sessionId: string) {
-    setError(null);
+  const updateActiveRun = useCallback((sessionId: string, run: SessionRun | null) => {
+    const previous = activeRunBySessionRef.current[sessionId];
+    const runChanged = previous?.id !== run?.id || previous?.status !== run?.status;
+    const seqAdvanced = (run?.lastEventSeq ?? 0) > (previous?.lastEventSeq ?? 0);
+    if (runChanged || (seqAdvanced && ((run?.lastEventSeq ?? 0) <= 5 || (run?.lastEventSeq ?? 0) % 100 === 0))) {
+      logChatShellDebug("[chat-debug][chat-shell] updateActiveRun", {
+        sessionId,
+        previousRunId: previous?.id ?? null,
+        previousStatus: previous?.status ?? null,
+        nextRunId: run?.id ?? null,
+        nextStatus: run?.status ?? null,
+        nextLastEventSeq: run?.lastEventSeq ?? null,
+      });
+    }
+
+    if (previous?.id && previous.id !== run?.id) {
+      eventSourcesRef.current[previous.id]?.close();
+      delete eventSourcesRef.current[previous.id];
+      if (reconnectTimersRef.current[previous.id]) {
+        window.clearTimeout(reconnectTimersRef.current[previous.id]);
+        delete reconnectTimersRef.current[previous.id];
+      }
+    }
+
+    const bufferedPatch = bufferedRunPatchBySessionRef.current[sessionId];
+    if (!run || bufferedPatch?.runId !== run.id) {
+      delete bufferedRunPatchBySessionRef.current[sessionId];
+      if (flushTimersBySessionRef.current[sessionId]) {
+        window.clearTimeout(flushTimersBySessionRef.current[sessionId]);
+        delete flushTimersBySessionRef.current[sessionId];
+      }
+    }
+
+    activeRunBySessionRef.current = {
+      ...activeRunBySessionRef.current,
+      [sessionId]: run,
+    };
+    setActiveRunBySession((current) => ({
+      ...current,
+      [sessionId]: run,
+    }));
+  }, []);
+
+  const updateSessionSummary = useCallback((next: Session) => {
+    setSessions((current) => {
+      const index = current.findIndex((session) => session.id === next.id);
+      if (index === -1) {
+        return [next, ...current];
+      }
+
+      const copy = [...current];
+      copy[index] = next;
+      return copy;
+    });
+  }, []);
+
+  const syncSessionUrl = useCallback((sessionId: string | null) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (sessionId) {
+      searchParams.set("session", sessionId);
+    } else {
+      searchParams.delete("session");
+    }
+    const query = searchParams.toString();
+    const nextUrl = query ? `${pathname}?${query}` : pathname;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [pathname]);
+
+  const flushBufferedRunPatch = useCallback((sessionId: string, fallbackRun: SessionRun) => {
+    const patch = bufferedRunPatchBySessionRef.current[sessionId];
+    if (!patch || patch.runId !== fallbackRun.id) {
+      return;
+    }
+
+    const currentRun = activeRunBySessionRef.current[sessionId] ?? fallbackRun;
+    updateActiveRun(sessionId, {
+      ...currentRun,
+      id: fallbackRun.id,
+      status: "STREAMING",
+      draftAssistantContent: patch.draftAssistantContent,
+      lastEventSeq: patch.lastEventSeq,
+      updatedAt: patch.updatedAt,
+    });
+  }, [updateActiveRun]);
+
+  const scheduleBufferedRunPatchFlush = useCallback((sessionId: string, fallbackRun: SessionRun) => {
+    if (flushTimersBySessionRef.current[sessionId]) {
+      return;
+    }
+
+    flushTimersBySessionRef.current[sessionId] = window.setTimeout(() => {
+      delete flushTimersBySessionRef.current[sessionId];
+      flushBufferedRunPatch(sessionId, fallbackRun);
+    }, activeSessionIdRef.current === sessionId ? 16 : 120);
+  }, [flushBufferedRunPatch]);
+
+  const subscribeToRun = useCallback((sessionId: string, run: SessionRun) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!["STARTING", "STREAMING"].includes(run.status)) {
+      logChatShellDebug("[chat-debug][chat-shell] skipping subscribe for terminal run", {
+        sessionId,
+        runId: run.id,
+        status: run.status,
+      });
+      return;
+    }
+
+    if (eventSourcesRef.current[run.id]) {
+      logChatShellDebug("[chat-debug][chat-shell] subscribe skipped because source already exists", {
+        sessionId,
+        runId: run.id,
+        status: run.status,
+      });
+      return;
+    }
+
+    if (reconnectTimersRef.current[run.id]) {
+      window.clearTimeout(reconnectTimersRef.current[run.id]);
+      delete reconnectTimersRef.current[run.id];
+    }
+
+    const afterSeq = lastEventSeqByRunRef.current[run.id] ?? run.lastEventSeq ?? 0;
+    let receivedEventCount = 0;
+    logChatShellDebug("[chat-debug][chat-shell] opening EventSource", {
+      sessionId,
+      runId: run.id,
+      runStatus: run.status,
+      afterSeq,
+      activeSessionId: activeSessionIdRef.current,
+    });
+    const source = new EventSource(
+      `/api/sessions/${sessionId}/runs/${run.id}/stream?afterSeq=${encodeURIComponent(String(afterSeq))}`,
+    );
+
+    eventSourcesRef.current[run.id] = source;
+
+    source.onmessage = (event) => {
+      const payload = parseSsePayload(event.data);
+      if (payload.type === "ping") {
+        return;
+      }
+
+      receivedEventCount += 1;
+      reconnectAttemptsRef.current[run.id] = 0;
+      lastEventSeqByRunRef.current[run.id] = payload.seq;
+
+      if (payload.type !== "delta" || receivedEventCount <= 5 || receivedEventCount % 50 === 0) {
+        logChatShellDebug("[chat-debug][chat-shell] received stream event", {
+          sessionId,
+          runId: run.id,
+          activeSessionId: activeRunBySessionRef.current[sessionId]?.id === run.id ? sessionId : null,
+          payloadType: payload.type,
+          seq: payload.seq,
+          receivedEventCount,
+        });
+      }
+
+      if (payload.type === "started") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        updateActiveRun(sessionId, {
+          ...(activeRunBySessionRef.current[sessionId] ?? run),
+          id: run.id,
+          status: "STREAMING",
+          lastEventSeq: payload.seq,
+        });
+        return;
+      }
+
+      if (payload.type === "delta") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        const currentRun = activeRunBySessionRef.current[sessionId] ?? run;
+        const currentBufferedPatch = bufferedRunPatchBySessionRef.current[sessionId];
+        const nextDraftAssistantContent =
+          currentBufferedPatch?.runId === run.id
+            ? `${currentBufferedPatch.draftAssistantContent}${payload.delta}`
+            : `${currentRun.draftAssistantContent}${payload.delta}`;
+
+        bufferedRunPatchBySessionRef.current[sessionId] = {
+          runId: run.id,
+          draftAssistantContent: nextDraftAssistantContent,
+          lastEventSeq: payload.seq,
+          updatedAt: new Date().toISOString(),
+        };
+        scheduleBufferedRunPatchFlush(sessionId, currentRun);
+        return;
+      }
+
+      flushBufferedRunPatch(sessionId, run);
+      source.close();
+      delete eventSourcesRef.current[run.id];
+      logChatShellDebug("[chat-debug][chat-shell] terminal stream event", {
+        sessionId,
+        runId: run.id,
+        payloadType: payload.type,
+        seq: payload.seq,
+        receivedEventCount,
+      });
+
+      if (payload.type === "done") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "completed" }));
+        setErrorBySession((current) => ({ ...current, [sessionId]: null }));
+        setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+      } else if (payload.type === "aborted") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "aborted" }));
+        setErrorBySession((current) => ({ ...current, [sessionId]: payload.reason }));
+      } else if (payload.type === "pairing_required") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
+        setErrorBySession((current) => ({ ...current, [sessionId]: payload.pairing.message }));
+      } else {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setErrorBySession((current) => ({ ...current, [sessionId]: payload.error }));
+      }
+
+      void loadSessionRef.current(sessionId, false);
+    };
+
+    source.onerror = () => {
+      source.close();
+      delete eventSourcesRef.current[run.id];
+
+      const latestRun = activeRunBySessionRef.current[sessionId];
+      if (!latestRun || latestRun.id !== run.id) {
+        logChatShellDebug("[chat-debug][chat-shell] EventSource error ignored because run changed", {
+          sessionId,
+          runId: run.id,
+          latestRunId: latestRun?.id ?? null,
+        });
+        return;
+      }
+
+      const nextAttempt = (reconnectAttemptsRef.current[run.id] ?? 0) + 1;
+      reconnectAttemptsRef.current[run.id] = nextAttempt;
+
+      if (nextAttempt > 5) {
+        logChatShellDebug("[chat-debug][chat-shell] EventSource gave up reconnecting", {
+          sessionId,
+          runId: run.id,
+          nextAttempt,
+        });
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setErrorBySession((current) => ({
+          ...current,
+          [sessionId]: "Connection to the active response was lost. Refresh this session to recover.",
+        }));
+        return;
+      }
+
+      logChatShellDebug("[chat-debug][chat-shell] EventSource scheduling reconnect", {
+        sessionId,
+        runId: run.id,
+        nextAttempt,
+        afterSeq: lastEventSeqByRunRef.current[run.id] ?? run.lastEventSeq ?? 0,
+      });
+      setRunStateBySession((current) => ({ ...current, [sessionId]: "reconnecting" }));
+      reconnectTimersRef.current[run.id] = window.setTimeout(() => {
+        subscribeToRun(sessionId, latestRun);
+      }, Math.min(1000 * nextAttempt, 4000));
+    };
+  }, [flushBufferedRunPatch, scheduleBufferedRunPatchFlush, updateActiveRun]);
+
+  const loadSession = useCallback(async (sessionId: string, clearError = true) => {
+    logChatShellDebug("[chat-debug][chat-shell] loading session", {
+      sessionId,
+      clearError,
+      activeSessionId: activeSessionIdRef.current,
+    });
+
+    if (clearError) {
+      setErrorBySession((current) => ({ ...current, [sessionId]: null }));
+    }
+
     const response = await fetch(`/api/sessions/${sessionId}/messages`, {
       cache: "no-store",
     });
+
     if (!response.ok) {
-      setError("Failed to load session");
+      setErrorBySession((current) => ({ ...current, [sessionId]: "Failed to load session" }));
       return;
     }
 
     const payload = (await response.json()) as {
-      session: { id: string };
+      session: Session;
       messages: Message[];
+      activeRun: SessionRun | null;
     };
-    setMessages(payload.messages);
-    setPendingAttachments([]);
-  }
 
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) ?? null,
-    [activeSessionId, sessions],
-  );
+    logChatShellDebug("[chat-debug][chat-shell] loaded session", {
+      sessionId,
+      activeSessionId: activeSessionIdRef.current,
+      messageCount: payload.messages.length,
+      activeRunId: payload.activeRun?.id ?? null,
+      activeRunStatus: payload.activeRun?.status ?? null,
+      activeRunAssistantMessageId: payload.activeRun?.assistantMessageId ?? null,
+      activeRunLastEventSeq: payload.activeRun?.lastEventSeq ?? null,
+    });
+
+    let nextMessages = payload.messages;
+    if (
+      payload.activeRun &&
+      !payload.activeRun.assistantMessageId &&
+      payload.activeRun.draftAssistantContent.trim() &&
+      ["FAILED", "ABORTED"].includes(payload.activeRun.status)
+    ) {
+      nextMessages = [
+        ...payload.messages,
+        {
+          id: `draft-run:${payload.activeRun.id}`,
+          role: "ASSISTANT",
+          content: payload.activeRun.draftAssistantContent,
+          createdAt: payload.activeRun.updatedAt,
+          attachments: [],
+        },
+      ];
+    }
+
+    setMessagesBySession((current) => ({
+      ...current,
+      [sessionId]: nextMessages,
+    }));
+    setLoadedSessionIds((current) => ({ ...current, [sessionId]: true }));
+    updateSessionSummary(payload.session);
+    updateActiveRun(sessionId, payload.activeRun);
+
+    const nextState = payload.activeRun ? mapRunStatusToState(payload.activeRun.status) : "idle";
+    setRunStateBySession((current) => ({ ...current, [sessionId]: nextState }));
+
+    if (!payload.activeRun) {
+      setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+      return;
+    }
+
+    lastEventSeqByRunRef.current[payload.activeRun.id] = payload.activeRun.lastEventSeq;
+
+    if (["STARTING", "STREAMING"].includes(payload.activeRun.status)) {
+      subscribeToRun(sessionId, payload.activeRun);
+    }
+  }, [subscribeToRun, updateActiveRun, updateSessionSummary]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    loadSessionRef.current = loadSession;
+  }, [loadSession]);
 
   const loadMoreSessions = useCallback(async () => {
     if (loadingMore || !hasMore || !nextCursor) {
@@ -325,36 +745,89 @@ export function ChatShell({
 
     syncMessagesToBottom();
     shouldSnapMessagesToBottomRef.current = false;
-  }, [messages, syncMessagesToBottom]);
+  }, [messages, syncMessagesToBottom, visibleDraftKey]);
+
+  useEffect(() => {
+    if (initialActiveSessionId && initialActiveRun) {
+      subscribeToRun(initialActiveSessionId, initialActiveRun);
+    }
+
+    const eventSources = eventSourcesRef.current;
+    const reconnectTimers = reconnectTimersRef.current;
+
+    return () => {
+      for (const source of Object.values(eventSources)) {
+        source.close();
+      }
+      for (const timer of Object.values(reconnectTimers)) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [initialActiveRun, initialActiveSessionId, subscribeToRun]);
 
   async function selectSession(sessionId: string) {
-    setPairing(null);
+    logChatShellDebug("[chat-debug][chat-shell] selecting session", {
+      fromSessionId: activeSessionId,
+      toSessionId: sessionId,
+      alreadyLoaded: Boolean(loadedSessionIds[sessionId]),
+    });
     setShowScrollToBottom(false);
     setActiveSessionId(sessionId);
-    setPendingAttachments([]);
     shouldSnapMessagesToBottomRef.current = true;
     shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
-    await loadSession(sessionId);
+    syncSessionUrl(sessionId);
+
+    if (!loadedSessionIds[sessionId]) {
+      await loadSession(sessionId);
+      return;
+    }
+
+    const run = activeRunBySessionRef.current[sessionId];
+    if (run) {
+      flushBufferedRunPatch(sessionId, run);
+    }
+    if (run && ["STARTING", "STREAMING"].includes(run.status)) {
+      subscribeToRun(sessionId, run);
+    }
   }
 
   async function createSession() {
-    setError(null);
+    logChatShellDebug("[chat-debug][chat-shell] creating session", {
+      currentActiveSessionId: activeSessionId,
+    });
+    setErrorBySession((current) => ({
+      ...current,
+      [activeSessionId ?? ""]: null,
+    }));
+
     const response = await fetch("/api/sessions", { method: "POST" });
     if (!response.ok) {
-      setError("Failed to create session");
+      if (activeSessionId) {
+        setErrorBySession((current) => ({ ...current, [activeSessionId]: "Failed to create session" }));
+      }
       return;
     }
+
     const payload = (await response.json()) as { session: Session };
-    setSessions((current) => [payload.session, ...current]);
+    logChatShellDebug("[chat-debug][chat-shell] created session", {
+      previousActiveSessionId: activeSessionId,
+      newSessionId: payload.session.id,
+    });
+    updateSessionSummary(payload.session);
     setActiveSessionId(payload.session.id);
-    setMessages([]);
-    setPendingAttachments([]);
-    setPairing(null);
+    setMessagesBySession((current) => ({ ...current, [payload.session.id]: [] }));
+    setLoadedSessionIds((current) => ({ ...current, [payload.session.id]: true }));
+    updateActiveRun(payload.session.id, null);
+    setRunStateBySession((current) => ({ ...current, [payload.session.id]: "idle" }));
+    setPendingAttachmentsBySession((current) => ({ ...current, [payload.session.id]: [] }));
+    setComposerBySession((current) => ({ ...current, [payload.session.id]: "" }));
+    setPairingBySession((current) => ({ ...current, [payload.session.id]: null }));
     setShowScrollToBottom(false);
     shouldSnapMessagesToBottomRef.current = true;
     shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
+    syncSessionUrl(payload.session.id);
   }
 
   async function uploadFiles(files: FileList | null) {
@@ -362,8 +835,8 @@ export function ChatShell({
       return;
     }
 
-    setUploading(true);
-    setError(null);
+    setUploadingBySession((current) => ({ ...current, [activeSessionId]: true }));
+    setErrorBySession((current) => ({ ...current, [activeSessionId]: null }));
     const nextAttachments: Attachment[] = [];
 
     for (const file of Array.from(files)) {
@@ -378,7 +851,10 @@ export function ChatShell({
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(payload.error ?? `Upload failed for ${file.name}`);
+        setErrorBySession((current) => ({
+          ...current,
+          [activeSessionId]: payload.error ?? `Upload failed for ${file.name}`,
+        }));
         continue;
       }
 
@@ -386,175 +862,160 @@ export function ChatShell({
       nextAttachments.push(payload.attachment);
     }
 
-    setPendingAttachments((current) => [...current, ...nextAttachments]);
-    setUploading(false);
+    setPendingAttachmentsBySession((current) => ({
+      ...current,
+      [activeSessionId]: [...(current[activeSessionId] ?? []), ...nextAttachments],
+    }));
+    setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
   }
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedText = text.trim();
-    if (!activeSessionId || loading || (!trimmedText && pendingAttachments.length === 0)) {
+
+    if (!activeSessionId || loading) {
       return;
     }
-    const inputText = trimmedText ? text : "";
-    const selectedAttachments = pendingAttachments;
+
+    const currentText = composerBySession[activeSessionId] ?? "";
+    const trimmedText = currentText.trim();
+    const selectedAttachments = pendingAttachmentsBySession[activeSessionId] ?? [];
+
+    if (!trimmedText && selectedAttachments.length === 0) {
+      return;
+    }
+
+    const inputText = trimmedText ? currentText : "";
     const attachmentIds = selectedAttachments.map((attachment) => attachment.id);
-
-    const userMessage: Message = {
-      id: `local-user-${Date.now()}`,
-      role: "USER",
-      content: inputText,
-      createdAt: new Date().toISOString(),
-      attachments: selectedAttachments,
-    };
-    const streamingAssistantId = `local-assistant-${Date.now()}`;
-    const assistantMessage: Message = {
-      id: streamingAssistantId,
-      role: "ASSISTANT",
-      content: "",
-      createdAt: new Date().toISOString(),
-      attachments: [],
+    const clientRequestId = crypto.randomUUID();
+    const targetSessionId = activeSessionId;
+    const optimisticRun: SessionRun = {
+      id: `pending:${clientRequestId}`,
+      status: "STARTING",
+      clientRequestId,
+      assistantMessageId: null,
+      lastEventSeq: 0,
+      draftAssistantContent: "",
+      errorMessage: null,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
+    logChatShellDebug("[chat-debug][chat-shell] sending message", {
+      sessionId: targetSessionId,
+      clientRequestId,
+      textLength: inputText.length,
+      attachmentCount: selectedAttachments.length,
+    });
+
+    setMessagesBySession((current) => ({
+      ...current,
+      [targetSessionId]: [
+        ...(current[targetSessionId] ?? []),
+        {
+          id: `local-user:${clientRequestId}`,
+          role: "USER",
+          content: inputText,
+          createdAt: new Date().toISOString(),
+          attachments: selectedAttachments,
+        },
+      ],
+    }));
+    setComposerBySession((current) => ({ ...current, [targetSessionId]: "" }));
+    setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: [] }));
+    setRunStateBySession((current) => ({ ...current, [targetSessionId]: "starting" }));
+    setErrorBySession((current) => ({ ...current, [targetSessionId]: null }));
+    setPairingBySession((current) => ({ ...current, [targetSessionId]: null }));
+    updateActiveRun(targetSessionId, optimisticRun);
     shouldSnapMessagesToBottomRef.current = true;
     shouldStickMessagesToBottomRef.current = true;
     setShowScrollToBottom(false);
-    setMessages((current) => [...current, userMessage, assistantMessage]);
-    setLoading(true);
-    setError(null);
-    setPairing(null);
-    setText("");
-    setPendingAttachments([]);
-    abortController.current = new AbortController();
 
-    const response = await fetch(`/api/sessions/${activeSessionId}/messages`, {
+    const response = await fetch(`/api/sessions/${targetSessionId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: inputText,
         attachmentIds,
+        clientRequestId,
       }),
-      signal: abortController.current.signal,
     }).catch((fetchError) => fetchError);
 
     if (response instanceof Error) {
-      setLoading(false);
-      setError(response.message);
-      await loadSession(activeSessionId);
+      logChatShellDebug("[chat-debug][chat-shell] send failed before response", {
+        sessionId: targetSessionId,
+        clientRequestId,
+        error: response.message,
+      });
+      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "failed" }));
+      setErrorBySession((current) => ({ ...current, [targetSessionId]: response.message }));
+      setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
+      setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
+      await loadSession(targetSessionId, false);
       return;
     }
 
+    const rawText = await response.text();
     if (!response.ok) {
-      setLoading(false);
-      const raw = await response.text().catch(() => "");
       let errorMessage = "Failed to send";
-
-      if (raw) {
+      if (rawText) {
         try {
-          const payload = JSON.parse(raw) as { error?: string };
+          const payload = JSON.parse(rawText) as { error?: string };
           errorMessage = payload.error ?? errorMessage;
         } catch {
-          errorMessage = raw;
+          errorMessage = rawText;
         }
       }
 
-      setError(errorMessage);
-      await loadSession(activeSessionId);
+      logChatShellDebug("[chat-debug][chat-shell] send failed with response", {
+        sessionId: targetSessionId,
+        clientRequestId,
+        errorMessage,
+        status: response.status,
+      });
+      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "failed" }));
+      setErrorBySession((current) => ({ ...current, [targetSessionId]: errorMessage }));
+      setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
+      setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
+      await loadSession(targetSessionId, false);
       return;
     }
 
-    if (!response.body) {
-      setLoading(false);
-      setError("Streaming response body missing");
-      await loadSession(activeSessionId);
+    const payload = JSON.parse(rawText) as {
+      created: boolean;
+      run: SessionRun | null;
+      session: Session;
+    };
+
+    logChatShellDebug("[chat-debug][chat-shell] send response received", {
+      sessionId: targetSessionId,
+      currentActiveSessionId: activeSessionId,
+      clientRequestId,
+      created: payload.created,
+      runId: payload.run?.id ?? null,
+      runStatus: payload.run?.status ?? null,
+      runLastEventSeq: payload.run?.lastEventSeq ?? null,
+    });
+
+    updateSessionSummary(payload.session);
+
+    if (!payload.run) {
+      updateActiveRun(targetSessionId, null);
+      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "idle" }));
       return;
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let streamFinished = false;
+    const run = payload.run;
+    updateActiveRun(targetSessionId, run);
+    setRunStateBySession((current) => ({
+      ...current,
+      [targetSessionId]: mapRunStatusToState(run.status),
+    }));
+    lastEventSeqByRunRef.current[run.id] = run.lastEventSeq;
 
-    try {
-      const consumeLine = (line: string) => {
-        if (!line.trim()) {
-          return;
-        }
-
-        const payload = parseStreamEvent(line);
-        if (payload.type === "delta") {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === streamingAssistantId
-                ? { ...message, content: message.content + payload.delta }
-                : message,
-            ),
-          );
-          return;
-        }
-
-        if (payload.type === "done") {
-          shouldSnapMessagesToBottomRef.current = shouldStickMessagesToBottomRef.current;
-          shouldStickMessagesToBottomRef.current = false;
-          setShowScrollToBottom(false);
-          setMessages(payload.messages);
-          setPendingAttachments([]);
-          setSessions((current) =>
-            current.map((session) =>
-              session.id === payload.session.id ? payload.session : session,
-            ),
-          );
-          streamFinished = true;
-          setLoading(false);
-          return;
-        }
-
-        if (payload.type === "pairing_required") {
-          shouldStickMessagesToBottomRef.current = false;
-          setShowScrollToBottom(false);
-          setPairing(payload.pairing);
-          setMessages((current) => current.filter((message) => message.id !== streamingAssistantId));
-          streamFinished = true;
-          setLoading(false);
-          void loadSession(activeSessionId);
-          return;
-        }
-
-        if (payload.type === "error") {
-          streamFinished = true;
-          throw new Error(payload.error);
-        }
-      };
-
-      while (true) {
-        if (streamFinished) {
-          break;
-        }
-
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-
-        if (done) {
-          break;
-        }
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          consumeLine(line);
-        }
-      }
-
-      if (!streamFinished && buffer.trim()) {
-        consumeLine(buffer);
-      }
-    } catch (streamError) {
-      setError(streamError instanceof Error ? streamError.message : "Failed to stream");
-      await loadSession(activeSessionId);
-    } finally {
-      setLoading(false);
-      reader.releaseLock();
+    if (["STARTING", "STREAMING"].includes(run.status)) {
+      subscribeToRun(targetSessionId, run);
+    } else {
+      await loadSession(targetSessionId, false);
     }
   }
 
@@ -563,11 +1024,10 @@ export function ChatShell({
       return;
     }
 
-    abortController.current?.abort();
     shouldStickMessagesToBottomRef.current = false;
     setShowScrollToBottom(false);
     await fetch(`/api/sessions/${activeSessionId}/abort`, { method: "POST" });
-    setLoading(false);
+    setRunStateBySession((current) => ({ ...current, [activeSessionId]: "aborted" }));
   }
 
   function handleMessagesScroll() {
@@ -667,6 +1127,9 @@ export function ChatShell({
           <div className="space-y-1">
             {sessions.map((session) => {
               const isActive = session.id === activeSessionId;
+              const runState = runStateBySession[session.id] ?? mapRunStatusToState(session.activeRun?.status);
+              const isBusy = isRunBusy(runState);
+
               return (
                 <button
                   key={session.id}
@@ -688,9 +1151,14 @@ export function ChatShell({
                       </span>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-xs font-medium text-stone-100">{session.title}</p>
-                    </>
+                      {isBusy ? (
+                        <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
+                          Live
+                        </span>
+                      ) : null}
+                    </div>
                   )}
                 </button>
               );
@@ -785,8 +1253,8 @@ export function ChatShell({
                   <button
                     type="button"
                     onClick={() => {
-                      setPairing(null);
                       if (activeSessionId) {
+                        setPairingBySession((current) => ({ ...current, [activeSessionId]: null }));
                         void loadSession(activeSessionId);
                       }
                     }}
@@ -798,7 +1266,7 @@ export function ChatShell({
               </div>
             ) : null}
 
-            {messages.length ? null : (
+            {messages.length === 0 && !activeRun ? (
               <div className="flex min-h-full flex-1 items-center justify-center py-4">
                 <button
                   type="button"
@@ -808,7 +1276,7 @@ export function ChatShell({
                   New session
                 </button>
               </div>
-            )}
+            ) : null}
 
             {messages.map((message) => (
               <div
@@ -836,11 +1304,6 @@ export function ChatShell({
                       ))}
                     </div>
                   ) : null}
-                  {loading &&
-                  message.id === messages[messages.length - 1]?.id &&
-                  message.role === "ASSISTANT" ? (
-                    <StreamingSpinner />
-                  ) : null}
                 </div>
                 <p
                   className={`mt-1 text-[10px] ${
@@ -851,6 +1314,26 @@ export function ChatShell({
                 </p>
               </div>
             ))}
+
+            {activeRun ? (
+              <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-white/8 bg-black/25 px-2 py-1.75 text-stone-100 sm:px-3 sm:py-2">
+                <div>
+                  <MessageBody
+                    content={activeRun.draftAssistantContent}
+                    isUser={false}
+                    streaming={loading || activeRun.status === "STARTING" || activeRun.status === "STREAMING"}
+                  />
+                  {loading || activeRun.status === "STARTING" || activeRun.status === "STREAMING" ? <StreamingSpinner /> : null}
+                </div>
+                <p className="mt-1 text-[10px] text-stone-500">
+                  {activeRun.status === "ABORTED"
+                    ? "Interrupted"
+                    : activeRun.status === "FAILED"
+                      ? activeRun.errorMessage ?? "Failed"
+                      : formatRelativeDate(activeRun.updatedAt)}
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -880,7 +1363,13 @@ export function ChatShell({
               <form onSubmit={sendMessage} className="px-0.5 py-0.5">
                 <textarea
                   value={text}
-                  onChange={(event) => setText(event.target.value)}
+                  onChange={(event) => {
+                    if (!activeSessionId) {
+                      return;
+                    }
+                    const value = event.target.value;
+                    setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
+                  }}
                   rows={2}
                   placeholder="Message the agent..."
                   className="min-h-[3rem] w-full resize-none bg-transparent px-0 py-0 text-[15px] leading-5 text-stone-100 outline-none placeholder:text-stone-500 sm:min-h-[3.25rem] sm:text-sm sm:leading-6"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { chatRunManager } from "@/lib/chat-run-manager";
 import { abortOpenClawSession } from "@/lib/openclaw/chat";
 import { getChatSessionForUser } from "@/lib/session-service";
 
@@ -20,6 +21,9 @@ export async function POST(
 
   try {
     await abortOpenClawSession(session.agentId, session.openclawSessionId);
+    if (session.runs[0]) {
+      await chatRunManager.markAborted(session.runs[0].id);
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("[api/abort] abortOpenClawSession failed", {
