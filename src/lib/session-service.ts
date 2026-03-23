@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export const SESSION_PAGE_SIZE = 30;
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
+export const SESSION_TITLE_MAX_LENGTH = 60;
 
 const activeRunInclude = {
   runs: {
@@ -160,6 +161,24 @@ export async function getChatSessionForUser(userId: string, sessionId: string) {
   });
 }
 
+export function normalizeSessionTitle(title: string) {
+  return title.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
+}
+
+export async function renameChatSessionForUser(userId: string, sessionId: string, title: string) {
+  return prisma.chatSession.updateMany({
+    where: {
+      id: sessionId,
+      userId,
+      status: SessionStatus.ACTIVE,
+    },
+    data: {
+      title: normalizeSessionTitle(title),
+      isTitleManuallySet: true,
+    },
+  });
+}
+
 export async function addCachedMessage({
   sessionId,
   role,
@@ -182,7 +201,7 @@ export async function addCachedMessage({
 }
 
 export async function touchSession(sessionId: string, titleSource?: string) {
-  const title = titleSource ? titleSource.slice(0, 60) : undefined;
+  const title = titleSource ? normalizeSessionTitle(titleSource) : undefined;
   return prisma.chatSession.update({
     where: { id: sessionId },
     data: {

@@ -1,5 +1,6 @@
 import { ChatRunStatus, MessageRole, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { normalizeSessionTitle } from "@/lib/session-service";
 
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const TERMINAL_CHAT_RUN_STATUSES = [
@@ -134,6 +135,18 @@ export async function createChatRunForMessage(args: {
   clientRequestId: string;
 }) {
   return prisma.$transaction(async (tx) => {
+    const currentSession = await tx.chatSession.findUnique({
+      where: { id: args.sessionId },
+      select: {
+        userId: true,
+        isTitleManuallySet: true,
+      },
+    });
+
+    if (!currentSession || currentSession.userId !== args.userId) {
+      throw new Error("Session not found");
+    }
+
     const existing = await tx.chatRun.findFirst({
       where: {
         sessionId: args.sessionId,
@@ -187,7 +200,10 @@ export async function createChatRunForMessage(args: {
     await tx.chatSession.update({
       where: { id: args.sessionId },
       data: {
-        title: args.titleSource ? args.titleSource.slice(0, 60) : undefined,
+        title:
+          args.titleSource && !currentSession.isTitleManuallySet
+            ? normalizeSessionTitle(args.titleSource)
+            : undefined,
         lastMessageAt: new Date(),
       },
     });

@@ -64,6 +64,7 @@ model ChatSession {
   agentId           String
   openclawSessionId String             @unique
   title             String
+  isTitleManuallySet Boolean           @default(false)
   status            SessionStatus      @default(ACTIVE)
   lastMessageAt     DateTime?
   createdAt         DateTime           @default(now())

@@ -81,6 +81,8 @@ type BufferedRunPatch = {
   updatedAt: string;
 };
 
+const SESSION_TITLE_MAX_LENGTH = 60;
+
 function logChatShellDebug(message: string, details: Record<string, unknown>) {
   if (process.env.NODE_ENV !== "development") {
     return;
@@ -257,9 +259,14 @@ export function ChatShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameSubmitting, setRenameSubmitting] = useState(false);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const shouldSnapMessagesToBottomRef = useRef(true);
   const shouldStickMessagesToBottomRef = useRef(false);
   const isProgrammaticMessagesScrollRef = useRef(false);
@@ -280,6 +287,10 @@ export function ChatShell({
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, sessions],
+  );
+  const renameTargetSession = useMemo(
+    () => sessions.find((session) => session.id === renameSessionId) ?? null,
+    [renameSessionId, sessions],
   );
   const messages = useMemo(
     () => (activeSessionId ? messagesBySession[activeSessionId] ?? [] : []),
@@ -672,6 +683,15 @@ export function ChatShell({
     loadSessionRef.current = loadSession;
   }, [loadSession]);
 
+  useEffect(() => {
+    if (!renameSessionId || !renameInputRef.current) {
+      return;
+    }
+
+    renameInputRef.current.focus();
+    renameInputRef.current.select();
+  }, [renameSessionId]);
+
   const loadMoreSessions = useCallback(async () => {
     if (loadingMore || !hasMore || !nextCursor) {
       return;
@@ -828,6 +848,81 @@ export function ChatShell({
     shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
     syncSessionUrl(payload.session.id);
+  }
+
+  function openRenameModal(session: Session) {
+    if (isSidebarCollapsed) {
+      return;
+    }
+
+    setRenameSessionId(session.id);
+    setRenameTitle(session.title);
+    setRenameError(null);
+    setRenameSubmitting(false);
+  }
+
+  function closeRenameModal() {
+    if (renameSubmitting) {
+      return;
+    }
+
+    setRenameSessionId(null);
+    setRenameTitle("");
+    setRenameError(null);
+  }
+
+  async function submitRenameSession(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!renameTargetSession || renameSubmitting) {
+      return;
+    }
+
+    const normalizedTitle = renameTitle.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
+    if (!normalizedTitle) {
+      setRenameError("Title is required.");
+      return;
+    }
+
+    setRenameSubmitting(true);
+    setRenameError(null);
+
+    const response = await fetch(`/api/sessions/${renameTargetSession.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: normalizedTitle }),
+    }).catch((fetchError) => fetchError);
+
+    if (response instanceof Error) {
+      setRenameError(response.message);
+      setRenameSubmitting(false);
+      return;
+    }
+
+    const rawText = await response.text();
+    if (!response.ok) {
+      let errorMessage = "Failed to rename session";
+
+      if (rawText) {
+        try {
+          const payload = JSON.parse(rawText) as { error?: string };
+          errorMessage = payload.error ?? errorMessage;
+        } catch {
+          errorMessage = rawText;
+        }
+      }
+
+      setRenameError(errorMessage);
+      setRenameSubmitting(false);
+      return;
+    }
+
+    const payload = JSON.parse(rawText) as { session: Session };
+    updateSessionSummary(payload.session);
+    setRenameSubmitting(false);
+    setRenameSessionId(null);
+    setRenameTitle("");
+    setRenameError(null);
   }
 
   async function uploadFiles(files: FileList | null) {
@@ -1135,6 +1230,7 @@ export function ChatShell({
                   key={session.id}
                   type="button"
                   onClick={() => void selectSession(session.id)}
+                  onDoubleClick={() => openRenameModal(session)}
                   title={isSidebarCollapsed ? session.title : undefined}
                   className={`w-full rounded-[0.75rem] border text-left transition ${
                     isSidebarCollapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
@@ -1410,6 +1506,70 @@ export function ChatShell({
           </div>
         </div>
       </section>
+
+      {renameTargetSession ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+          <button
+            type="button"
+            aria-label="Close rename modal"
+            onClick={closeRenameModal}
+            className="absolute inset-0"
+          />
+          <div className="relative z-10 w-full max-w-md rounded-[1rem] border border-white/10 bg-[#17120ff7] p-4 shadow-[0_25px_80px_rgba(0,0,0,0.45)]">
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-stone-100">Rename session</p>
+              <p className="mt-1 text-xs text-stone-400">Update how this session appears in the sidebar.</p>
+            </div>
+
+            <form onSubmit={submitRenameSession}>
+              <label className="block">
+                <span className="sr-only">Session title</span>
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameTitle}
+                  maxLength={SESSION_TITLE_MAX_LENGTH}
+                  disabled={renameSubmitting}
+                  onChange={(event) => {
+                    setRenameTitle(event.target.value);
+                    if (renameError) {
+                      setRenameError(null);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      closeRenameModal();
+                    }
+                  }}
+                  className="w-full rounded-[0.8rem] border border-white/10 bg-black/25 px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-amber-400"
+                  placeholder="Session title"
+                />
+              </label>
+
+              {renameError ? <p className="mt-2 text-xs text-rose-300">{renameError}</p> : null}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeRenameModal}
+                  disabled={renameSubmitting}
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-stone-300 transition hover:border-white/20 hover:text-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={renameSubmitting}
+                  className="rounded-full bg-amber-400 px-3 py-1.5 text-xs font-semibold text-stone-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-100"
+                >
+                  {renameSubmitting ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
