@@ -102,21 +102,36 @@ function formatFileSize(size: number) {
 
 function AttachmentBadge({
   attachment,
-  muted = false,
+  tone = "composer",
 }: {
   attachment: Attachment;
-  muted?: boolean;
+  tone?: "composer" | "user-message" | "assistant-message";
 }) {
+  const styles =
+    tone === "user-message"
+      ? {
+          outer:
+            "border-stone-950/14 bg-[linear-gradient(180deg,rgba(255,248,235,0.94),rgba(247,233,205,0.88))] text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]",
+          meta: "text-stone-700/80",
+        }
+      : tone === "assistant-message"
+        ? {
+            outer:
+              "border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] text-stone-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+            meta: "text-stone-400",
+          }
+        : {
+            outer:
+              "border-amber-300/25 bg-[linear-gradient(180deg,rgba(251,191,36,0.2),rgba(251,146,60,0.12))] text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+            meta: "text-amber-100/70",
+          };
+
   return (
     <span
-      className={`inline-flex flex-wrap items-center gap-1 rounded-full border px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px] ${
-        muted
-          ? "border-white/8 bg-white/[0.04] text-stone-400"
-          : "border-amber-300/20 bg-amber-400/15 text-amber-100"
-      }`}
+      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[0.9rem] border px-2.5 py-1.5 text-[10px] leading-tight sm:px-3 sm:text-[11px] ${styles.outer}`}
     >
-      <span className="font-medium">{attachment.originalName}</span>
-      <span className={muted ? "text-stone-500" : "text-amber-100/70"}>
+      <span className="max-w-full truncate font-semibold">{attachment.originalName}</span>
+      <span className={`text-[0.92em] ${styles.meta}`}>
         {attachment.mime || "unknown"} · {formatFileSize(attachment.size)}
       </span>
     </span>
@@ -807,12 +822,16 @@ export function ChatShell({
                 <div>
                   <MessageBody content={message.content} isUser={message.role === "USER"} />
                   {message.attachments.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div
+                      className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
+                        message.role === "USER" ? "border-stone-950/12" : "border-white/8"
+                      }`}
+                    >
                       {message.attachments.map((attachment) => (
                         <AttachmentBadge
                           key={attachment.id}
                           attachment={attachment}
-                          muted={message.role !== "USER"}
+                          tone={message.role === "USER" ? "user-message" : "assistant-message"}
                         />
                       ))}
                     </div>
@@ -854,7 +873,7 @@ export function ChatShell({
               {pendingAttachments.length ? (
                 <div className="mb-1.5 flex flex-wrap gap-1">
                   {pendingAttachments.map((attachment) => (
-                    <AttachmentBadge key={attachment.id} attachment={attachment} />
+                    <AttachmentBadge key={attachment.id} attachment={attachment} tone="composer" />
                   ))}
                 </div>
               ) : null}
