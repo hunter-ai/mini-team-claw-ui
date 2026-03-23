@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum SessionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model User {
+  id              String        @id @default(cuid())
+  username        String        @unique
+  passwordHash    String
+  role            UserRole      @default(MEMBER)
+  openclawAgentId String
+  isActive        Boolean       @default(true)
+  sessions        UserSession[]
+  chatSessions    ChatSession[]
+  attachments     Attachment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ChatSession {
+  id                String             @id @default(cuid())
+  userId            String
+  agentId           String
+  openclawSessionId String             @unique
+  title             String
+  status            SessionStatus      @default(ACTIVE)
+  lastMessageAt     DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages          ChatMessageCache[]
+  attachments       Attachment[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessageCache {
+  id            String      @id @default(cuid())
+  sessionId      String
+  role          MessageRole
+  content       String
+  attachmentIds String[]
+  createdAt     DateTime    @default(now())
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model Attachment {
+  id            String      @id @default(cuid())
+  userId        String
+  sessionId      String?
+  originalName  String
+  mime          String
+  size          Int
+  sha256        String
+  containerPath String
+  hostPath      String
+  createdAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session       ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+model GatewayOperatorIdentity {
+  id                  String   @id
+  deviceId            String   @unique
+  publicKey           String
+  privateKeyEncrypted String
+  deviceTokenEncrypted String?
+  tokenScopes         String[] @default([])
+  lastPairedAt        DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
