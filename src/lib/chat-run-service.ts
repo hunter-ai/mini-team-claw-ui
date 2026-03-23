@@ -1,5 +1,6 @@
 import { ChatRunStatus, MessageRole, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { GatewayToolEvent } from "@/lib/openclaw/gateway";
 import { normalizeSessionTitle } from "@/lib/session-service";
 
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
@@ -36,6 +37,12 @@ export type PersistedChatRunEvent = {
   createdAt: Date;
 };
 
+type ContentCheckpointPayload = {
+  beforeStepKey: string;
+  text: string;
+  textLength: number;
+};
+
 export class ActiveChatRunConflictError extends Error {
   constructor(message = "A response is already in progress for this session.") {
     super(message);
@@ -55,6 +62,37 @@ function toJsonValue(
   }
 
   return value as Prisma.InputJsonValue;
+}
+
+function asRecord(value: Prisma.JsonValue | null) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readContentCheckpointPayload(value: Prisma.JsonValue | null): ContentCheckpointPayload | null {
+  const payload = asRecord(value);
+  const beforeStepKey = readString(payload?.beforeStepKey);
+  const text = readString(payload?.text);
+  const textLength = readNumber(payload?.textLength);
+
+  if (!beforeStepKey || text === null) {
+    return null;
+  }
+
+  return {
+    beforeStepKey,
+    text,
+    textLength: textLength ?? text.length,
+  };
 }
 
 export function mapActiveChatRun(run: {
@@ -247,6 +285,7 @@ async function appendChatRunEvent(args: {
   draftMode?: "append" | "replace" | "keep";
   draftValue?: string;
   assistantMessageId?: string | null;
+  checkpointBeforeEvent?: { type: "explicit"; key: string } | { type: "lifecycle" };
 }) {
   return prisma.$transaction(async (tx) => {
     const run = await tx.chatRun.findUniqueOrThrow({
@@ -260,7 +299,60 @@ async function appendChatRunEvent(args: {
       } as const;
     }
 
-    const nextSeq = run.lastEventSeq + 1;
+    let nextSeq = run.lastEventSeq;
+    if (args.checkpointBeforeEvent) {
+      const checkpointEvents = await tx.chatRunEvent.findMany({
+        where: {
+          runId: run.id,
+          type: "content_checkpoint",
+        },
+        orderBy: {
+          seq: "asc",
+        },
+        select: {
+          payloadJson: true,
+        },
+      });
+
+      let capturedTextLength = 0;
+      const capturedStepKeys = new Set<string>();
+      for (const checkpointEvent of checkpointEvents) {
+        const payload = readContentCheckpointPayload(checkpointEvent.payloadJson);
+        if (!payload) {
+          continue;
+        }
+
+        capturedTextLength += payload.textLength;
+        capturedStepKeys.add(payload.beforeStepKey);
+      }
+
+      const beforeStepKey =
+        args.checkpointBeforeEvent.type === "lifecycle"
+          ? `lifecycle:${run.id}:${run.lastEventSeq + 2}`
+          : args.checkpointBeforeEvent.key;
+
+      const shouldCreateCheckpoint =
+        args.checkpointBeforeEvent.type === "lifecycle" || !capturedStepKeys.has(beforeStepKey);
+
+      if (shouldCreateCheckpoint) {
+        nextSeq += 1;
+        const checkpointText = run.draftAssistantContent.slice(capturedTextLength);
+        await tx.chatRunEvent.create({
+          data: {
+            runId: run.id,
+            seq: nextSeq,
+            type: "content_checkpoint",
+            payloadJson: {
+              beforeStepKey,
+              text: checkpointText,
+              textLength: checkpointText.length,
+            },
+          },
+        });
+      }
+    }
+
+    nextSeq += 1;
     const nextDraft =
       args.draftMode === "replace"
         ? args.draftValue ?? ""
@@ -355,6 +447,21 @@ export async function appendChatRunDelta(runId: string, delta: string) {
   });
 }
 
+export async function appendChatRunToolEvent(runId: string, tool: GatewayToolEvent) {
+  return appendChatRunEvent({
+    runId,
+    type: "tool",
+    payloadJson: {
+      tool,
+    },
+    draftMode: "keep",
+    checkpointBeforeEvent: {
+      type: "explicit",
+      key: tool.callId ?? tool.key ?? tool.name,
+    },
+  });
+}
+
 export async function markChatRunAborted(runId: string, reason = "Aborted") {
   return appendChatRunEvent({
     runId,
@@ -364,6 +471,7 @@ export async function markChatRunAborted(runId: string, reason = "Aborted") {
     errorMessage: reason,
     endedAt: new Date(),
     draftMode: "keep",
+    checkpointBeforeEvent: { type: "lifecycle" },
   });
 }
 
@@ -376,6 +484,7 @@ export async function markChatRunFailed(runId: string, errorMessage: string) {
     errorMessage,
     endedAt: new Date(),
     draftMode: "keep",
+    checkpointBeforeEvent: { type: "lifecycle" },
   });
 }
 
@@ -409,6 +518,7 @@ export async function markChatRunPairingRequired(
     errorMessage: pairing.message,
     endedAt: new Date(),
     draftMode: "keep",
+    checkpointBeforeEvent: { type: "lifecycle" },
   });
 }
 

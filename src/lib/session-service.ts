@@ -3,6 +3,7 @@ import { ChatRunStatus, MessageRole, Prisma, SessionStatus, User } from "@prisma
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_PAGE_SIZE = 30;
+export const RUN_HISTORY_LIMIT = 20;
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const SESSION_TITLE_MAX_LENGTH = 60;
 
@@ -18,10 +19,15 @@ const activeRunInclude = {
   },
 };
 
-const latestRunInclude = {
+const runHistoryInclude = {
   runs: {
     orderBy: { createdAt: "desc" as const },
-    take: 1,
+    take: RUN_HISTORY_LIMIT,
+    include: {
+      events: {
+        orderBy: { seq: "asc" as const },
+      },
+    },
   },
 };
 
@@ -156,7 +162,7 @@ export async function getChatSessionForUser(userId: string, sessionId: string) {
       attachments: {
         orderBy: { createdAt: "desc" },
       },
-      ...latestRunInclude,
+      ...runHistoryInclude,
     },
   });
 }

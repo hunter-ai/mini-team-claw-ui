@@ -4,6 +4,7 @@ import { composePrompt, sendToOpenClaw } from "@/lib/openclaw/chat";
 import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import {
   appendChatRunDelta,
+  appendChatRunToolEvent,
   completeChatRun,
   isTerminalChatRunStatus,
   markChatRunAborted,
@@ -232,6 +233,20 @@ class ChatRunManager {
                 deltaPreview: delta.slice(0, 80),
               });
             }
+            this.publish(persisted.event);
+          }
+        },
+        onToolEvent: async (tool) => {
+          const persisted = await appendChatRunToolEvent(run.id, tool);
+          if (persisted.event) {
+            logChatRunManagerDebug("[chat-debug][run-manager] persisted tool event", {
+              runId: run.id,
+              sessionId: run.sessionId,
+              seq: persisted.event.seq,
+              toolName: tool.name,
+              toolStatus: tool.status,
+              toolCallId: tool.callId,
+            });
             this.publish(persisted.event);
           }
         },

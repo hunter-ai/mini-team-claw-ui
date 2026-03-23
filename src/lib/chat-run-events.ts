@@ -1,35 +1,95 @@
 import { Prisma } from "@prisma/client";
 
+export type ClientToolEventPayload = {
+  key: string;
+  callId: string | null;
+  name: string;
+  status: "started" | "running" | "completed" | "failed";
+  summary: string | null;
+  outputPreview: string | null;
+  raw: Record<string, unknown> | null;
+};
+
+export type ClientRunActivityEntry =
+  | {
+      kind: "tool";
+      key: string;
+      runId: string;
+      seq: number;
+      createdAt: string;
+      tool: ClientToolEventPayload;
+    }
+  | {
+      kind: "lifecycle";
+      key: string;
+      runId: string;
+      seq: number;
+      createdAt: string;
+      phase: "started" | "completed" | "failed" | "aborted" | "pairing_required";
+      title: string;
+      detail: string | null;
+    };
+
+export type ClientRunHistoryItem = {
+  runId: string;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
+  draftAssistantContent: string;
+  errorMessage: string | null;
+  startedAt: string;
+  updatedAt: string;
+  steps: ClientRunActivityEntry[];
+  contentCheckpoints: Array<{
+    beforeStepKey: string;
+    text: string;
+    textLength: number;
+    seq: number;
+  }>;
+};
+
 export type ClientChatRunEvent =
   | {
       runId: string;
       seq: number;
       type: "started";
       status: "STREAMING";
+      createdAt: string;
     }
   | {
       runId: string;
       seq: number;
       type: "delta";
       delta: string;
+      createdAt: string;
+    }
+  | {
+      runId: string;
+      seq: number;
+      type: "tool";
+      tool: ClientToolEventPayload;
+      createdAt: string;
     }
   | {
       runId: string;
       seq: number;
       type: "done";
       content: string;
+      createdAt: string;
     }
   | {
       runId: string;
       seq: number;
       type: "error";
       error: string;
+      createdAt: string;
     }
   | {
       runId: string;
       seq: number;
       type: "aborted";
       reason: string;
+      createdAt: string;
     }
   | {
       runId: string;
@@ -50,6 +110,7 @@ export type ClientChatRunEvent =
           message: string | null;
         }>;
       };
+      createdAt: string;
     };
 
 type EventRecord = {
@@ -58,6 +119,7 @@ type EventRecord = {
   type: string;
   delta: string | null;
   payloadJson: Prisma.JsonValue | null;
+  createdAt: Date;
 };
 
 function asRecord(value: Prisma.JsonValue | null) {
@@ -66,8 +128,170 @@ function asRecord(value: Prisma.JsonValue | null) {
     : null;
 }
 
-export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
+function readString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function readNonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readToolPayload(value: Prisma.JsonValue | null): ClientToolEventPayload | null {
+  const payload = asRecord(value);
+  const tool = asRecord((payload?.tool as Prisma.JsonValue | null) ?? value);
+  if (!tool) {
+    return null;
+  }
+
+  const status = readString(tool.status);
+  const normalizedStatus =
+    status && ["started", "running", "completed", "failed"].includes(status)
+      ? (status as ClientToolEventPayload["status"])
+      : "running";
+
+  return {
+    key: readNonEmptyString(tool.key) ?? readNonEmptyString(tool.callId) ?? readNonEmptyString(tool.name) ?? "tool",
+    callId: readNonEmptyString(tool.callId),
+    name: readNonEmptyString(tool.name) ?? "Tool",
+    status: normalizedStatus,
+    summary: readNonEmptyString(tool.summary),
+    outputPreview: readNonEmptyString(tool.outputPreview),
+    raw: asRecord((tool.raw as Prisma.JsonValue | null) ?? null),
+  };
+}
+
+function readContentCheckpoint(
+  event: EventRecord,
+): {
+  beforeStepKey: string;
+  text: string;
+  textLength: number;
+  seq: number;
+} | null {
   const payload = asRecord(event.payloadJson);
+  const beforeStepKey = readNonEmptyString(payload?.beforeStepKey);
+  const text = readString(payload?.text);
+  const textLength = readNumber(payload?.textLength);
+
+  if (!beforeStepKey || text === null) {
+    return null;
+  }
+
+  return {
+    beforeStepKey,
+    text,
+    textLength: textLength ?? text.length,
+    seq: event.seq,
+  };
+}
+
+function serializeLifecycleEntry(event: EventRecord, payload: Record<string, unknown> | null) {
+  if (event.type === "started") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${event.runId}:${event.seq}`,
+      runId: event.runId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      phase: "started",
+      title: "Run started",
+      detail: null,
+    } satisfies ClientRunActivityEntry;
+  }
+
+  if (event.type === "done") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${event.runId}:${event.seq}`,
+      runId: event.runId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      phase: "completed",
+      title: "Response completed",
+      detail: null,
+    } satisfies ClientRunActivityEntry;
+  }
+
+  if (event.type === "aborted") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${event.runId}:${event.seq}`,
+      runId: event.runId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      phase: "aborted",
+      title: "Run aborted",
+      detail: readNonEmptyString(payload?.reason),
+    } satisfies ClientRunActivityEntry;
+  }
+
+  if (event.type === "pairing_required") {
+    const pairing = asRecord(payload?.pairing as Prisma.JsonValue | null);
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${event.runId}:${event.seq}`,
+      runId: event.runId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      phase: "pairing_required",
+      title: "Pairing required",
+      detail: readNonEmptyString(pairing?.message) ?? "Device pairing required",
+    } satisfies ClientRunActivityEntry;
+  }
+
+  return {
+    kind: "lifecycle",
+    key: `lifecycle:${event.runId}:${event.seq}`,
+    runId: event.runId,
+    seq: event.seq,
+    createdAt: event.createdAt.toISOString(),
+    phase: "failed",
+    title: "Run failed",
+    detail: readNonEmptyString(payload?.error) ?? "Unknown chat run error",
+  } satisfies ClientRunActivityEntry;
+}
+
+export function serializeRunActivity(event: EventRecord): ClientRunActivityEntry | null {
+  const payload = asRecord(event.payloadJson);
+
+  if (event.type === "delta" || event.type === "content_checkpoint") {
+    return null;
+  }
+
+  if (event.type === "tool") {
+    const tool = readToolPayload(event.payloadJson);
+    if (!tool) {
+      return null;
+    }
+
+    return {
+      kind: "tool",
+      key: tool.key || `tool:${event.runId}:${event.seq}`,
+      runId: event.runId,
+      seq: event.seq,
+      createdAt: event.createdAt.toISOString(),
+      tool,
+    };
+  }
+
+  if (["started", "done", "aborted", "pairing_required", "error"].includes(event.type)) {
+    return serializeLifecycleEntry(event, payload);
+  }
+
+  return null;
+}
+
+export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent | null {
+  const payload = asRecord(event.payloadJson);
+  const createdAt = event.createdAt.toISOString();
+
+  if (event.type === "content_checkpoint") {
+    return null;
+  }
 
   if (event.type === "started") {
     return {
@@ -75,6 +299,7 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
       seq: event.seq,
       type: "started",
       status: "STREAMING",
+      createdAt,
     };
   }
 
@@ -84,6 +309,25 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
       seq: event.seq,
       type: "delta",
       delta: event.delta ?? "",
+      createdAt,
+    };
+  }
+
+  if (event.type === "tool") {
+    return {
+      runId: event.runId,
+      seq: event.seq,
+      type: "tool",
+      tool: readToolPayload(event.payloadJson) ?? {
+        key: `tool:${event.runId}:${event.seq}`,
+        callId: null,
+        name: "Tool",
+        status: "running",
+        summary: null,
+        outputPreview: null,
+        raw: null,
+      },
+      createdAt,
     };
   }
 
@@ -93,6 +337,7 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
       seq: event.seq,
       type: "done",
       content: typeof payload?.content === "string" ? payload.content : "",
+      createdAt,
     };
   }
 
@@ -102,6 +347,7 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
       seq: event.seq,
       type: "aborted",
       reason: typeof payload?.reason === "string" ? payload.reason : "Aborted",
+      createdAt,
     };
   }
 
@@ -136,6 +382,7 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
         lastPairedAt: typeof pairing?.lastPairedAt === "string" ? pairing.lastPairedAt : null,
         pendingRequests,
       },
+      createdAt,
     };
   }
 
@@ -144,5 +391,38 @@ export function serializeChatRunEvent(event: EventRecord): ClientChatRunEvent {
     seq: event.seq,
     type: "error",
     error: typeof payload?.error === "string" ? payload.error : "Unknown chat run error",
+    createdAt,
+  };
+}
+
+export function serializeRunHistoryItem(run: {
+  id: string;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
+  draftAssistantContent: string;
+  errorMessage: string | null;
+  startedAt: Date;
+  updatedAt: Date;
+  events: EventRecord[];
+}): ClientRunHistoryItem {
+  return {
+    runId: run.id,
+    userMessageId: run.userMessageId,
+    assistantMessageId: run.assistantMessageId,
+    status: run.status,
+    draftAssistantContent: run.draftAssistantContent,
+    errorMessage: run.errorMessage,
+    startedAt: run.startedAt.toISOString(),
+    updatedAt: run.updatedAt.toISOString(),
+    steps: run.events
+      .map((event) => serializeRunActivity(event))
+      .filter((entry): entry is ClientRunActivityEntry => entry !== null),
+    contentCheckpoints: run.events
+      .map((event) => (event.type === "content_checkpoint" ? readContentCheckpoint(event) : null))
+      .filter(
+        (checkpoint): checkpoint is NonNullable<ReturnType<typeof readContentCheckpoint>> =>
+          checkpoint !== null,
+      ),
   };
 }

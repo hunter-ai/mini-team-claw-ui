@@ -39,9 +39,22 @@ export type ChatResult = {
   status: string | null;
 };
 
+export type GatewayToolEventStatus = "started" | "running" | "completed" | "failed";
+
+export type GatewayToolEvent = {
+  key: string;
+  callId: string | null;
+  name: string;
+  status: GatewayToolEventStatus;
+  summary: string | null;
+  outputPreview: string | null;
+  raw: Record<string, unknown> | null;
+};
+
 type StreamHandlers = {
   onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
   onDelta?: (delta: string) => void | Promise<void>;
+  onToolEvent?: (event: GatewayToolEvent) => void | Promise<void>;
   onError?: (message: string) => void | Promise<void>;
 };
 
@@ -242,6 +255,131 @@ function readNestedString(
   }
 
   return null;
+}
+
+function truncatePreview(value: string, maxLength = 240) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`;
+}
+
+function stringifyPreview(value: unknown, maxLength = 240) {
+  if (typeof value === "string") {
+    return truncatePreview(value, maxLength);
+  }
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  try {
+    return truncatePreview(JSON.stringify(value), maxLength);
+  } catch {
+    return truncatePreview(String(value), maxLength);
+  }
+}
+
+function readNestedRecord(
+  record: Record<string, unknown> | null,
+  ...keys: string[]
+) {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = asRecord(record[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readNestedValue(
+  record: Record<string, unknown> | null,
+  ...keys: string[]
+) {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (key in record) {
+      return record[key];
+    }
+  }
+
+  return null;
+}
+
+function normalizeToolPhase(phase: string | null): GatewayToolEventStatus {
+  const normalized = phase?.toLowerCase();
+  if (!normalized) {
+    return "running";
+  }
+
+  if (["start", "started", "begin", "call_start", "tool_start"].includes(normalized)) {
+    return "started";
+  }
+
+  if (["end", "ended", "complete", "completed", "done", "success", "ok"].includes(normalized)) {
+    return "completed";
+  }
+
+  if (["error", "failed", "failure"].includes(normalized)) {
+    return "failed";
+  }
+
+  return "running";
+}
+
+function normalizeGatewayToolEvent(payload: Record<string, unknown> | undefined): GatewayToolEvent | null {
+  const root = asRecord(payload) ?? {};
+  const data = asRecord(root.data);
+  const meta = asRecord(root.meta);
+  const args = readNestedRecord(root, "args") ?? readNestedRecord(data, "args") ?? readNestedRecord(meta, "args");
+
+  const name =
+    readNestedString(root, "name", "toolName", "tool_name") ??
+    readNestedString(data, "name", "toolName", "tool_name") ??
+    readNestedString(meta, "name", "toolName", "tool_name");
+
+  if (!name) {
+    return null;
+  }
+
+  const callId =
+    readNestedString(root, "callId", "toolCallId", "tool_call_id", "id") ??
+    readNestedString(data, "callId", "toolCallId", "tool_call_id", "id") ??
+    readNestedString(meta, "callId", "toolCallId", "tool_call_id", "id");
+  const phase =
+    readNestedString(data, "phase", "status", "state") ??
+    readNestedString(root, "phase", "status", "state") ??
+    readNestedString(meta, "phase", "status", "state");
+  const summary =
+    readNestedString(data, "summary", "label", "title", "message") ??
+    readNestedString(meta, "summary", "label", "title", "message") ??
+    (args ? stringifyPreview(args, 160) : null);
+  const outputPreview =
+    stringifyPreview(readNestedValue(data, "outputPreview", "output_preview", "preview", "stdout", "stderr")) ??
+    stringifyPreview(readNestedValue(root, "outputPreview", "output_preview", "preview", "stdout", "stderr")) ??
+    stringifyPreview(readNestedValue(data, "output", "result", "content", "text")) ??
+    stringifyPreview(readNestedValue(root, "output", "result", "content", "text"));
+
+  return {
+    key: callId ?? name,
+    callId,
+    name,
+    status: normalizeToolPhase(phase),
+    summary,
+    outputPreview,
+    raw: root,
+  };
 }
 
 function extractChatSendAck(payload: Record<string, unknown> | undefined) {
@@ -711,6 +849,13 @@ export class OpenClawGatewayClient {
       if (stream === "assistant" && typeof data.delta === "string") {
         output += data.delta;
         await handlers?.onDelta?.(data.delta);
+      }
+
+      if (stream === "tool") {
+        const toolEvent = normalizeGatewayToolEvent(payload);
+        if (toolEvent) {
+          await handlers?.onToolEvent?.(toolEvent);
+        }
       }
 
       if (stream === "lifecycle" && String(data.phase ?? "") === "error") {

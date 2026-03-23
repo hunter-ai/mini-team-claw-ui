@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { toChatMessageViews } from "@/lib/chat-presenter";
 import { serializeActiveRun, serializeSessionSummary } from "@/lib/chat-response";
 import { chatRunManager } from "@/lib/chat-run-manager";
@@ -61,6 +62,7 @@ export async function GET(
     session: serializeSessionSummary(session),
     messages: toChatMessageViews(session.messages, session.attachments),
     activeRun: serializeActiveRun(session.runs[0] ?? null),
+    runHistory: session.runs.map((run) => serializeRunHistoryItem(run)),
   });
 }
 

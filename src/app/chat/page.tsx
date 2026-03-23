@@ -1,4 +1,5 @@
 import { ChatShell } from "@/components/chat-shell";
+import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { serializeSessionSummary } from "@/lib/chat-response";
 import { toChatMessageViews } from "@/lib/chat-presenter";
 import { requireUser } from "@/lib/auth";
@@ -35,6 +36,7 @@ export default async function ChatPage({
         initialNextCursor={pageInfo.nextCursor}
         initialActiveSessionId={activeSession?.id ?? null}
         initialMessages={activeSession ? toChatMessageViews(activeSession.messages, activeSession.attachments) : []}
+        initialRunHistory={activeSession ? activeSession.runs.map((run) => serializeRunHistoryItem(run)) : []}
         initialActiveRun={activeSession?.runs[0] ? serializeSessionSummary(activeSession).activeRun : null}
         user={{
           username: user.username,

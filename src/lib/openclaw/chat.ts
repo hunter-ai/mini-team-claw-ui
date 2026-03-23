@@ -1,4 +1,5 @@
 import { OpenClawGatewayClient } from "@/lib/openclaw/gateway";
+import type { GatewayToolEvent } from "@/lib/openclaw/gateway";
 
 type OpenClawAttachmentInput = {
   id: string;
@@ -57,6 +58,7 @@ export async function sendToOpenClaw({
   idempotencyKey,
   onStarted,
   onDelta,
+  onToolEvent,
   onError,
 }: {
   agentId: string;
@@ -65,6 +67,7 @@ export async function sendToOpenClaw({
   idempotencyKey?: string;
   onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
   onDelta?: (delta: string) => void | Promise<void>;
+  onToolEvent?: (event: GatewayToolEvent) => void | Promise<void>;
   onError?: (message: string) => void | Promise<void>;
 }) {
   const client = new OpenClawGatewayClient();
@@ -72,7 +75,12 @@ export async function sendToOpenClaw({
 
   try {
     await client.connect();
-    return await client.sendMessage(sessionKey, message, { onStarted, onDelta, onError }, { idempotencyKey });
+    return await client.sendMessage(
+      sessionKey,
+      message,
+      { onStarted, onDelta, onToolEvent, onError },
+      { idempotencyKey },
+    );
   } finally {
     await client.close();
   }

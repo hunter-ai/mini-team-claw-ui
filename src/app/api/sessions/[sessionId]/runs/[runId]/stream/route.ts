@@ -57,6 +57,12 @@ export async function GET(
       const send = (payload: unknown) => {
         controller.enqueue(encoder.encode(encodeSse(payload)));
       };
+      const sendSerializedEvent = (event: Awaited<ReturnType<typeof listChatRunEventsAfter>>[number]) => {
+        const payload = serializeChatRunEvent(event);
+        if (payload) {
+          send(payload);
+        }
+      };
 
       let closed = false;
       let lastSeq = afterSeq;
@@ -89,7 +95,7 @@ export async function GET(
       for (const event of backlog) {
         lastSeq = event.seq;
         emittedEventCount += 1;
-        send(serializeChatRunEvent(event));
+        sendSerializedEvent(event);
       }
 
       if (backlog.length > 0) {
@@ -117,7 +123,7 @@ export async function GET(
             emittedEventCount,
           });
         }
-        send(serializeChatRunEvent(event));
+        sendSerializedEvent(event);
         if (["done", "error", "aborted", "pairing_required"].includes(event.type)) {
           close(`live:${event.type}`);
         }
@@ -150,7 +156,7 @@ export async function GET(
             lastSeq = event.seq;
             emittedEventCount += 1;
             flushedCount += 1;
-            send(serializeChatRunEvent(event));
+            sendSerializedEvent(event);
           }
 
           if (flushedCount > 0) {

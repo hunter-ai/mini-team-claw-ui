@@ -6,7 +6,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ClientChatRunEvent } from "@/lib/chat-run-events";
+import type {
+  ClientChatRunEvent,
+  ClientRunActivityEntry,
+  ClientRunHistoryItem,
+} from "@/lib/chat-run-events";
 import { formatRelativeDate } from "@/lib/utils";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -81,6 +85,45 @@ type BufferedRunPatch = {
   updatedAt: string;
 };
 
+type RenderableMessage =
+  | {
+      kind: "message";
+      id: string;
+      message: Message;
+      run: ClientRunHistoryItem | null;
+    }
+  | {
+      kind: "synthetic-run";
+      id: string;
+      run: ClientRunHistoryItem;
+    };
+
+type RunContentSegmentation = {
+  segments: string[];
+  stepKeys: string[];
+  capturedTextLength: number;
+};
+
+type AssistantRenderBlock =
+  | {
+      kind: "markdown_text";
+      key: string;
+      content: string;
+      streaming?: boolean;
+    }
+  | {
+      kind: "tool_step";
+      key: string;
+      entry: Extract<ClientRunActivityEntry, { kind: "tool" }>;
+      streaming?: boolean;
+    }
+  | {
+      kind: "lifecycle_note";
+      key: string;
+      entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>;
+      streaming?: boolean;
+    };
+
 const SESSION_TITLE_MAX_LENGTH = 60;
 
 function logChatShellDebug(message: string, details: Record<string, unknown>) {
@@ -133,6 +176,482 @@ function parseSsePayload(input: string) {
   return JSON.parse(input) as StreamPayload;
 }
 
+function truncateText(value: string, maxLength = 240) {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
+}
+
+function formatLifecycleTitle(entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>) {
+  return entry.title;
+}
+
+function getActivityEntryRenderKey(entry: ClientRunActivityEntry) {
+  if (entry.kind === "tool") {
+    return entry.tool.callId ?? entry.tool.key ?? entry.key;
+  }
+
+  return entry.key;
+}
+
+function shouldRenderLifecycleEntry(entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>) {
+  return !["started", "completed"].includes(entry.phase);
+}
+
+function summarizeRenderableSteps(run: ClientRunHistoryItem | null) {
+  if (!run) {
+    return [];
+  }
+
+  const toolGroups = new Map<
+    string,
+    {
+      sortSeq: number;
+      entry: Extract<ClientRunActivityEntry, { kind: "tool" }>;
+    }
+  >();
+  const lifecycleEntries: Array<{
+    sortSeq: number;
+    entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>;
+  }> = [];
+
+  for (const step of run.steps) {
+    if (step.kind === "tool") {
+      const key = getActivityEntryRenderKey(step);
+      const existing = toolGroups.get(key);
+
+      if (!existing) {
+        toolGroups.set(key, {
+          sortSeq: step.seq,
+          entry: step,
+        });
+        continue;
+      }
+
+      toolGroups.set(key, {
+        sortSeq: existing.sortSeq,
+        entry: {
+          ...existing.entry,
+          ...step,
+          tool: {
+            ...existing.entry.tool,
+            ...step.tool,
+          },
+        },
+      });
+      continue;
+    }
+
+    if (shouldRenderLifecycleEntry(step)) {
+      lifecycleEntries.push({
+        sortSeq: step.seq,
+        entry: step,
+      });
+    }
+  }
+
+  return [
+    ...Array.from(toolGroups.values()),
+    ...lifecycleEntries,
+  ]
+    .sort((left, right) => left.sortSeq - right.sortSeq)
+    .map((item) => item.entry);
+}
+
+function updateRunSegmentation(
+  current: Record<string, RunContentSegmentation>,
+  runId: string,
+  fullText: string,
+  stepKey: string,
+) {
+  const existing = current[runId] ?? {
+    segments: [],
+    stepKeys: [],
+    capturedTextLength: 0,
+  };
+
+  if (existing.stepKeys.includes(stepKey)) {
+    return current;
+  }
+
+  const nextSegments = [...existing.segments];
+  const nextText = fullText.slice(existing.capturedTextLength);
+  if (nextText.length > 0) {
+    nextSegments.push(nextText);
+  } else {
+    nextSegments.push("");
+  }
+
+  return {
+    ...current,
+    [runId]: {
+      segments: nextSegments,
+      stepKeys: [...existing.stepKeys, stepKey],
+      capturedTextLength: fullText.length,
+    },
+  };
+}
+
+function buildBlocksFromSteps(
+  steps: ClientRunActivityEntry[],
+  seenStepKeys?: Set<string>,
+) {
+  const blocks: AssistantRenderBlock[] = [];
+
+  for (const step of steps) {
+    const stepKey = getActivityEntryRenderKey(step);
+    if (seenStepKeys?.has(stepKey)) {
+      continue;
+    }
+
+    if (step.kind === "tool") {
+      blocks.push({
+        kind: "tool_step",
+        key: `tool:${stepKey}`,
+        entry: step,
+      });
+    } else {
+      blocks.push({
+        kind: "lifecycle_note",
+        key: `lifecycle:${stepKey}`,
+        entry: step,
+      });
+    }
+  }
+
+  return blocks;
+}
+
+function buildRenderableAssistantBlocks(args: {
+  content: string;
+  run: ClientRunHistoryItem | null;
+  segmentation?: RunContentSegmentation | null;
+  streaming?: boolean;
+}) {
+  const steps = summarizeRenderableSteps(args.run);
+  const blocks: AssistantRenderBlock[] = [];
+  const content = args.content;
+
+  if (args.segmentation && args.segmentation.stepKeys.length > 0) {
+    const stepMap = new Map(steps.map((step) => [getActivityEntryRenderKey(step), step]));
+
+    args.segmentation.stepKeys.forEach((stepKey, index) => {
+      const segment = args.segmentation?.segments[index] ?? "";
+      if (segment.trim()) {
+        blocks.push({
+          kind: "markdown_text",
+          key: `text:${index}:${stepKey}`,
+          content: segment,
+        });
+      }
+
+      const step = stepMap.get(stepKey);
+      if (step?.kind === "tool") {
+        blocks.push({
+          kind: "tool_step",
+          key: `tool:${stepKey}`,
+          entry: step,
+        });
+      } else if (step?.kind === "lifecycle") {
+        blocks.push({
+          kind: "lifecycle_note",
+          key: `lifecycle:${stepKey}`,
+          entry: step,
+        });
+      }
+    });
+
+    const trailingText = content.slice(args.segmentation.capturedTextLength);
+    if (trailingText.trim()) {
+      blocks.push({
+        kind: "markdown_text",
+        key: "text:trailing",
+        content: trailingText,
+      });
+    }
+
+    blocks.push(...buildBlocksFromSteps(steps, new Set(args.segmentation.stepKeys)));
+  } else if (args.run?.contentCheckpoints.length) {
+    const stepMap = new Map(steps.map((step) => [getActivityEntryRenderKey(step), step]));
+    const seenKeys = new Set<string>();
+    let capturedTextLength = 0;
+
+    for (const checkpoint of args.run.contentCheckpoints) {
+      if (checkpoint.text.trim()) {
+        blocks.push({
+          kind: "markdown_text",
+          key: `text:${checkpoint.seq}:${checkpoint.beforeStepKey}`,
+          content: checkpoint.text,
+        });
+      }
+
+      capturedTextLength += checkpoint.textLength;
+      const step = stepMap.get(checkpoint.beforeStepKey);
+      if (!step || seenKeys.has(checkpoint.beforeStepKey)) {
+        continue;
+      }
+
+      seenKeys.add(checkpoint.beforeStepKey);
+      if (step.kind === "tool") {
+        blocks.push({
+          kind: "tool_step",
+          key: `tool:${checkpoint.beforeStepKey}`,
+          entry: step,
+        });
+      } else {
+        blocks.push({
+          kind: "lifecycle_note",
+          key: `lifecycle:${checkpoint.beforeStepKey}`,
+          entry: step,
+        });
+      }
+    }
+
+    const trailingText = content.slice(capturedTextLength);
+    if (trailingText.trim()) {
+      blocks.push({
+        kind: "markdown_text",
+        key: "text:trailing",
+        content: trailingText,
+      });
+    }
+
+    blocks.push(...buildBlocksFromSteps(steps, seenKeys));
+  } else {
+    blocks.push(...buildBlocksFromSteps(steps));
+
+    if (content.trim()) {
+      blocks.push({
+        kind: "markdown_text",
+        key: "text:full",
+        content,
+      });
+    }
+  }
+
+  if (blocks.length === 0 && content.trim()) {
+    blocks.push({
+      kind: "markdown_text",
+      key: "text:only",
+      content,
+    });
+  }
+
+  if (args.streaming && blocks.length > 0) {
+    const last = blocks[blocks.length - 1];
+    blocks[blocks.length - 1] = {
+      ...last,
+      streaming: true,
+    };
+  }
+
+  return blocks;
+}
+
+function mergeRunActivityEntries(
+  current: ClientRunActivityEntry[],
+  incoming: ClientRunActivityEntry,
+) {
+  if (incoming.kind === "tool" && incoming.tool.callId) {
+    const existingIndex = current.findIndex(
+      (entry) => entry.kind === "tool" && entry.tool.callId === incoming.tool.callId,
+    );
+
+    if (existingIndex !== -1) {
+      const next = [...current];
+      const existing = next[existingIndex] as Extract<ClientRunActivityEntry, { kind: "tool" }>;
+      next[existingIndex] = {
+        ...existing,
+        ...incoming,
+        tool: {
+          ...existing.tool,
+          ...incoming.tool,
+        },
+      } as Extract<ClientRunActivityEntry, { kind: "tool" }>;
+      return next;
+    }
+  }
+
+  return [...current, incoming].sort((left, right) => left.seq - right.seq);
+}
+
+function upsertRunHistoryItem(
+  runs: ClientRunHistoryItem[],
+  patch: Partial<ClientRunHistoryItem> & Pick<ClientRunHistoryItem, "runId">,
+) {
+  const index = runs.findIndex((item) => item.runId === patch.runId);
+  if (index === -1) {
+    return runs;
+  }
+
+  const next = [...runs];
+  next[index] = {
+    ...next[index],
+    ...patch,
+    steps: patch.steps ?? next[index].steps,
+  };
+  return next;
+}
+
+function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunActivityEntry | null {
+  if (payload.type === "tool") {
+    return {
+      kind: "tool",
+      key: payload.tool.key || `tool:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      tool: payload.tool,
+    };
+  }
+
+  if (payload.type === "started") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      phase: "started",
+      title: "Run started",
+      detail: null,
+    };
+  }
+
+  if (payload.type === "done") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      phase: "completed",
+      title: "Response completed",
+      detail: null,
+    };
+  }
+
+  if (payload.type === "aborted") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      phase: "aborted",
+      title: "Run aborted",
+      detail: payload.reason,
+    };
+  }
+
+  if (payload.type === "pairing_required") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      phase: "pairing_required",
+      title: "Pairing required",
+      detail: payload.pairing.message,
+    };
+  }
+
+  if (payload.type === "error") {
+    return {
+      kind: "lifecycle",
+      key: `lifecycle:${payload.runId}:${payload.seq}`,
+      runId: payload.runId,
+      seq: payload.seq,
+      createdAt: payload.createdAt,
+      phase: "failed",
+      title: "Run failed",
+      detail: payload.error,
+    };
+  }
+
+  return null;
+}
+
+function AssistantTextBlock({
+  content,
+  streaming = false,
+}: {
+  content: string;
+  streaming?: boolean;
+}) {
+  if (!content.trim()) {
+    return null;
+  }
+
+  return (
+    <div className="whitespace-normal">
+      <MessageBody content={content} isUser={false} />
+      {streaming ? <StreamingSpinner /> : null}
+    </div>
+  );
+}
+
+function AssistantToolCard({
+  entry,
+  streaming = false,
+}: {
+  entry: Extract<ClientRunActivityEntry, { kind: "tool" }>;
+  streaming?: boolean;
+}) {
+  const hasDetails = Boolean(entry.tool.outputPreview || entry.tool.raw);
+  const summary = entry.tool.summary ?? "Tool invocation";
+
+  return (
+    <details
+      className="rounded-[0.75rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-3 py-2"
+    >
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-stone-100">{entry.tool.name}</span>
+          <span className="text-[11px] text-stone-400">{summary}</span>
+          {streaming ? <StreamingSpinner /> : null}
+        </div>
+      </summary>
+      {hasDetails ? (
+        <div className="mt-2 space-y-2 border-t border-white/8 pt-2">
+          {entry.tool.outputPreview ? (
+            <p className="whitespace-pre-wrap text-[11px] leading-5 text-stone-300">
+              {entry.tool.outputPreview}
+            </p>
+          ) : null}
+          {entry.tool.raw ? (
+            <pre className="overflow-x-auto rounded-[0.65rem] border border-white/8 bg-black/25 px-2.5 py-2 text-[10px] leading-5 text-stone-400">
+              {JSON.stringify(entry.tool.raw, null, 2)}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
+function AssistantLifecycleNote({
+  entry,
+  streaming = false,
+}: {
+  entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>;
+  streaming?: boolean;
+}) {
+  return (
+    <div className="rounded-[0.75rem] border border-white/8 bg-white/[0.02] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-stone-400">
+          {entry.phase.replace("_", " ")}
+        </span>
+        <span className="text-xs font-medium text-stone-100">{formatLifecycleTitle(entry)}</span>
+        {streaming ? <StreamingSpinner /> : null}
+      </div>
+      {entry.detail ? (
+        <p className="mt-1 text-[11px] leading-5 text-stone-400">{truncateText(entry.detail, 260)}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function AttachmentBadge({
   attachment,
   tone = "composer",
@@ -174,21 +693,15 @@ function AttachmentBadge({
 function MessageBody({
   content,
   isUser,
-  streaming = false,
 }: {
   content: string;
   isUser: boolean;
-  streaming?: boolean;
 }) {
   if (!content.trim()) {
     return null;
   }
 
   if (isUser) {
-    return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
-  }
-
-  if (streaming) {
     return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
   }
 
@@ -218,6 +731,7 @@ export function ChatShell({
   initialNextCursor,
   initialActiveSessionId,
   initialMessages,
+  initialRunHistory,
   initialActiveRun,
   user,
 }: {
@@ -226,6 +740,7 @@ export function ChatShell({
   initialNextCursor: string | null;
   initialActiveSessionId: string | null;
   initialMessages: Message[];
+  initialRunHistory: ClientRunHistoryItem[];
   initialActiveRun: SessionRun | null;
   user: UserShape;
 }) {
@@ -240,6 +755,10 @@ export function ChatShell({
   const [messagesBySession, setMessagesBySession] = useState<Record<string, Message[]>>(
     initialActiveSessionId ? { [initialActiveSessionId]: initialMessages } : {},
   );
+  const [runHistoryBySession, setRunHistoryBySession] = useState<Record<string, ClientRunHistoryItem[]>>(
+    initialActiveSessionId ? { [initialActiveSessionId]: initialRunHistory } : {},
+  );
+  const [contentSegmentsByRunId, setContentSegmentsByRunId] = useState<Record<string, RunContentSegmentation>>({});
   const [composerBySession, setComposerBySession] = useState<Record<string, string>>({});
   const [pendingAttachmentsBySession, setPendingAttachmentsBySession] = useState<Record<string, Attachment[]>>({});
   const [runStateBySession, setRunStateBySession] = useState<Record<string, RunState>>(
@@ -296,6 +815,10 @@ export function ChatShell({
     () => (activeSessionId ? messagesBySession[activeSessionId] ?? [] : []),
     [activeSessionId, messagesBySession],
   );
+  const runHistory = useMemo(
+    () => (activeSessionId ? runHistoryBySession[activeSessionId] ?? [] : []),
+    [activeSessionId, runHistoryBySession],
+  );
   const text = activeSessionId ? composerBySession[activeSessionId] ?? "" : "";
   const pendingAttachments = activeSessionId ? pendingAttachmentsBySession[activeSessionId] ?? [] : [];
   const activeRun = activeSessionId ? activeRunBySession[activeSessionId] ?? null : null;
@@ -303,9 +826,87 @@ export function ChatShell({
   const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
   const error = activeSessionId ? errorBySession[activeSessionId] ?? null : null;
   const pairing = activeSessionId ? pairingBySession[activeSessionId] ?? null : null;
+  const activeRunHistory = useMemo(
+    () => (activeRun ? runHistory.find((item) => item.runId === activeRun.id) ?? null : null),
+    [activeRun, runHistory],
+  );
+  const activeRunSegmentation = activeRun ? contentSegmentsByRunId[activeRun.id] ?? null : null;
+  const activeRunBlocks = useMemo(() => {
+    if (!activeRun || !["STARTING", "STREAMING"].includes(activeRun.status)) {
+      return [];
+    }
+
+    return buildRenderableAssistantBlocks({
+      content: activeRun.draftAssistantContent,
+      run:
+        activeRunHistory ?? {
+          runId: activeRun.id,
+          userMessageId: null,
+          assistantMessageId: activeRun.assistantMessageId,
+          status: activeRun.status,
+          draftAssistantContent: activeRun.draftAssistantContent,
+          errorMessage: activeRun.errorMessage,
+          startedAt: activeRun.startedAt,
+          updatedAt: activeRun.updatedAt,
+          steps: [],
+          contentCheckpoints: [],
+        },
+      segmentation: activeRunSegmentation,
+      streaming: true,
+    });
+  }, [activeRun, activeRunHistory, activeRunSegmentation]);
   const visibleDraftKey = activeRun
-    ? `${activeRun.id}:${activeRun.draftAssistantContent}:${activeRun.status}:${runStateBySession[activeSessionId ?? ""] ?? "idle"}`
+    ? `${activeRun.id}:${activeRun.draftAssistantContent}:${activeRun.status}:${runStateBySession[activeSessionId ?? ""] ?? "idle"}:${activeRunHistory?.steps.length ?? 0}:${activeRunSegmentation?.stepKeys.length ?? 0}:${activeRunBlocks.length}`
     : "idle";
+  const renderableMessages = useMemo(() => {
+    const runsInOrder = [...runHistory].sort(
+      (left, right) => new Date(left.startedAt).valueOf() - new Date(right.startedAt).valueOf(),
+    );
+    const assistantRunByMessageId = new Map(
+      runsInOrder
+        .filter((run) => run.assistantMessageId)
+        .map((run) => [run.assistantMessageId as string, run]),
+    );
+    const syntheticRunsByUserMessageId = new Map<string, ClientRunHistoryItem[]>();
+    const syntheticRuns = runsInOrder.filter(
+      (run) =>
+        !run.assistantMessageId &&
+        run.userMessageId &&
+        !(
+          activeRun &&
+          ["STARTING", "STREAMING"].includes(activeRun.status) &&
+          run.runId === activeRun.id
+        ),
+    );
+
+    for (const run of syntheticRuns) {
+      const list = syntheticRunsByUserMessageId.get(run.userMessageId!) ?? [];
+      list.push(run);
+      syntheticRunsByUserMessageId.set(run.userMessageId!, list);
+    }
+
+    const next: RenderableMessage[] = [];
+    for (const message of messages) {
+      next.push({
+        kind: "message",
+        id: message.id,
+        message,
+        run: message.role === "ASSISTANT" ? assistantRunByMessageId.get(message.id) ?? null : null,
+      });
+
+      if (message.role === "USER") {
+        for (const run of syntheticRunsByUserMessageId.get(message.id) ?? []) {
+          next.push({
+            kind: "synthetic-run",
+            id: `draft-run:${run.runId}`,
+            run,
+          });
+        }
+      }
+    }
+
+    return next;
+  }, [activeRun, messages, runHistory]);
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
@@ -401,6 +1002,73 @@ export function ChatShell({
     window.history.replaceState(window.history.state, "", nextUrl);
   }, [pathname]);
 
+  const replaceRunHistory = useCallback((sessionId: string, runs: ClientRunHistoryItem[]) => {
+    setRunHistoryBySession((current) => ({
+      ...current,
+      [sessionId]: runs,
+    }));
+  }, []);
+
+  const patchRunHistory = useCallback(
+    (
+      sessionId: string,
+      runId: string,
+      patch:
+        | Partial<ClientRunHistoryItem>
+        | ((current: ClientRunHistoryItem | null) => Partial<ClientRunHistoryItem> | null),
+    ) => {
+      setRunHistoryBySession((current) => {
+        const runs = current[sessionId] ?? [];
+        const existing = runs.find((item) => item.runId === runId) ?? null;
+        const nextPatch = typeof patch === "function" ? patch(existing) : patch;
+
+        if (!nextPatch) {
+          return current;
+        }
+
+        if (!existing) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [sessionId]: upsertRunHistoryItem(runs, {
+            runId,
+            ...nextPatch,
+          }),
+        };
+      });
+    },
+    [],
+  );
+
+  const getCurrentRunContent = useCallback((sessionId: string, fallbackRun: SessionRun) => {
+    const bufferedPatch = bufferedRunPatchBySessionRef.current[sessionId];
+    if (bufferedPatch?.runId === fallbackRun.id) {
+      return bufferedPatch.draftAssistantContent;
+    }
+
+    const currentRun = activeRunBySessionRef.current[sessionId];
+    if (currentRun?.id === fallbackRun.id) {
+      return currentRun.draftAssistantContent;
+    }
+
+    return fallbackRun.draftAssistantContent;
+  }, []);
+
+  const captureRunSegmentation = useCallback(
+    (sessionId: string, fallbackRun: SessionRun, entry: ClientRunActivityEntry | null) => {
+      if (!entry) {
+        return;
+      }
+
+      const stepKey = getActivityEntryRenderKey(entry);
+      const fullText = getCurrentRunContent(sessionId, fallbackRun);
+      setContentSegmentsByRunId((current) => updateRunSegmentation(current, fallbackRun.id, fullText, stepKey));
+    },
+    [getCurrentRunContent],
+  );
+
   const flushBufferedRunPatch = useCallback((sessionId: string, fallbackRun: SessionRun) => {
     const patch = bufferedRunPatchBySessionRef.current[sessionId];
     if (!patch || patch.runId !== fallbackRun.id) {
@@ -416,7 +1084,15 @@ export function ChatShell({
       lastEventSeq: patch.lastEventSeq,
       updatedAt: patch.updatedAt,
     });
-  }, [updateActiveRun]);
+    patchRunHistory(sessionId, fallbackRun.id, (existing) =>
+      existing
+        ? {
+            draftAssistantContent: patch.draftAssistantContent,
+            updatedAt: patch.updatedAt,
+          }
+        : null,
+    );
+  }, [patchRunHistory, updateActiveRun]);
 
   const scheduleBufferedRunPatchFlush = useCallback((sessionId: string, fallbackRun: SessionRun) => {
     if (flushTimersBySessionRef.current[sessionId]) {
@@ -501,6 +1177,18 @@ export function ChatShell({
           status: "STREAMING",
           lastEventSeq: payload.seq,
         });
+        const activityEntry = buildRunActivityEntryFromEvent(payload);
+        if (activityEntry) {
+          patchRunHistory(sessionId, run.id, (existing) =>
+            existing
+              ? {
+                  status: "STREAMING",
+                  updatedAt: payload.createdAt,
+                  steps: mergeRunActivityEntries(existing.steps, activityEntry),
+                }
+              : null,
+          );
+        }
         return;
       }
 
@@ -517,9 +1205,27 @@ export function ChatShell({
           runId: run.id,
           draftAssistantContent: nextDraftAssistantContent,
           lastEventSeq: payload.seq,
-          updatedAt: new Date().toISOString(),
+          updatedAt: payload.createdAt,
         };
         scheduleBufferedRunPatchFlush(sessionId, currentRun);
+        return;
+      }
+
+      if (payload.type === "tool") {
+        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        const activityEntry = buildRunActivityEntryFromEvent(payload);
+        captureRunSegmentation(sessionId, run, activityEntry);
+        if (activityEntry) {
+          patchRunHistory(sessionId, run.id, (existing) =>
+            existing
+              ? {
+                  status: "STREAMING",
+                  updatedAt: payload.createdAt,
+                  steps: mergeRunActivityEntries(existing.steps, activityEntry),
+                }
+              : null,
+          );
+        }
         return;
       }
 
@@ -548,6 +1254,33 @@ export function ChatShell({
       } else {
         setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.error }));
+      }
+
+      const activityEntry = buildRunActivityEntryFromEvent(payload);
+      captureRunSegmentation(sessionId, run, activityEntry);
+      if (activityEntry) {
+        patchRunHistory(sessionId, run.id, (existing) =>
+          existing
+            ? {
+                status:
+                  payload.type === "done"
+                    ? "COMPLETED"
+                    : payload.type === "aborted"
+                      ? "ABORTED"
+                      : "FAILED",
+                errorMessage:
+                  payload.type === "done"
+                    ? null
+                    : payload.type === "aborted"
+                      ? payload.reason
+                      : payload.type === "pairing_required"
+                        ? payload.pairing.message
+                        : payload.error,
+                updatedAt: payload.createdAt,
+                steps: mergeRunActivityEntries(existing.steps, activityEntry),
+              }
+            : null,
+        );
       }
 
       void loadSessionRef.current(sessionId, false);
@@ -595,7 +1328,7 @@ export function ChatShell({
         subscribeToRun(sessionId, latestRun);
       }, Math.min(1000 * nextAttempt, 4000));
     };
-  }, [flushBufferedRunPatch, scheduleBufferedRunPatchFlush, updateActiveRun]);
+  }, [captureRunSegmentation, flushBufferedRunPatch, patchRunHistory, scheduleBufferedRunPatchFlush, updateActiveRun]);
 
   const loadSession = useCallback(async (sessionId: string, clearError = true) => {
     logChatShellDebug("[chat-debug][chat-shell] loading session", {
@@ -621,6 +1354,7 @@ export function ChatShell({
       session: Session;
       messages: Message[];
       activeRun: SessionRun | null;
+      runHistory: ClientRunHistoryItem[];
     };
 
     logChatShellDebug("[chat-debug][chat-shell] loaded session", {
@@ -633,29 +1367,11 @@ export function ChatShell({
       activeRunLastEventSeq: payload.activeRun?.lastEventSeq ?? null,
     });
 
-    let nextMessages = payload.messages;
-    if (
-      payload.activeRun &&
-      !payload.activeRun.assistantMessageId &&
-      payload.activeRun.draftAssistantContent.trim() &&
-      ["FAILED", "ABORTED"].includes(payload.activeRun.status)
-    ) {
-      nextMessages = [
-        ...payload.messages,
-        {
-          id: `draft-run:${payload.activeRun.id}`,
-          role: "ASSISTANT",
-          content: payload.activeRun.draftAssistantContent,
-          createdAt: payload.activeRun.updatedAt,
-          attachments: [],
-        },
-      ];
-    }
-
     setMessagesBySession((current) => ({
       ...current,
-      [sessionId]: nextMessages,
+      [sessionId]: payload.messages,
     }));
+    replaceRunHistory(sessionId, payload.runHistory);
     setLoadedSessionIds((current) => ({ ...current, [sessionId]: true }));
     updateSessionSummary(payload.session);
     updateActiveRun(sessionId, payload.activeRun);
@@ -673,7 +1389,7 @@ export function ChatShell({
     if (["STARTING", "STREAMING"].includes(payload.activeRun.status)) {
       subscribeToRun(sessionId, payload.activeRun);
     }
-  }, [subscribeToRun, updateActiveRun, updateSessionSummary]);
+  }, [replaceRunHistory, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -765,7 +1481,7 @@ export function ChatShell({
 
     syncMessagesToBottom();
     shouldSnapMessagesToBottomRef.current = false;
-  }, [messages, syncMessagesToBottom, visibleDraftKey]);
+  }, [renderableMessages, syncMessagesToBottom, visibleDraftKey]);
 
   useEffect(() => {
     if (initialActiveSessionId && initialActiveRun) {
@@ -837,6 +1553,7 @@ export function ChatShell({
     updateSessionSummary(payload.session);
     setActiveSessionId(payload.session.id);
     setMessagesBySession((current) => ({ ...current, [payload.session.id]: [] }));
+    setRunHistoryBySession((current) => ({ ...current, [payload.session.id]: [] }));
     setLoadedSessionIds((current) => ({ ...current, [payload.session.id]: true }));
     updateActiveRun(payload.session.id, null);
     setRunStateBySession((current) => ({ ...current, [payload.session.id]: "idle" }));
@@ -1106,12 +1823,7 @@ export function ChatShell({
       [targetSessionId]: mapRunStatusToState(run.status),
     }));
     lastEventSeqByRunRef.current[run.id] = run.lastEventSeq;
-
-    if (["STARTING", "STREAMING"].includes(run.status)) {
-      subscribeToRun(targetSessionId, run);
-    } else {
-      await loadSession(targetSessionId, false);
-    }
+    await loadSession(targetSessionId, false);
   }
 
   async function abortSession() {
@@ -1374,60 +2086,130 @@ export function ChatShell({
               </div>
             ) : null}
 
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
-                  message.role === "USER"
-                    ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
-                    : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
-                }`}
-              >
-                <div>
-                  <MessageBody content={message.content} isUser={message.role === "USER"} />
-                  {message.attachments.length ? (
-                    <div
-                      className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
-                        message.role === "USER" ? "border-stone-950/12" : "border-white/8"
-                      }`}
-                    >
-                      {message.attachments.map((attachment) => (
-                        <AttachmentBadge
-                          key={attachment.id}
-                          attachment={attachment}
-                          tone={message.role === "USER" ? "user-message" : "assistant-message"}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <p
-                  className={`mt-1 text-[10px] ${
-                    message.role === "USER" ? "text-stone-700" : "text-stone-500"
+            {renderableMessages.map((item) => {
+              const run = item.kind === "message" ? item.run : item.run;
+              const isUser = item.kind === "message" && item.message.role === "USER";
+              const content = item.kind === "message" ? item.message.content : item.run.draftAssistantContent;
+              const createdAt = item.kind === "message" ? item.message.createdAt : item.run.updatedAt;
+              const attachments = item.kind === "message" ? item.message.attachments : [];
+              const assistantBlocks =
+                !isUser
+                  ? buildRenderableAssistantBlocks({
+                      content,
+                      run,
+                      segmentation: run ? contentSegmentsByRunId[run.runId] ?? null : null,
+                    })
+                  : [];
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
+                    isUser
+                      ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
+                      : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
                   }`}
                 >
-                  {formatRelativeDate(message.createdAt)}
-                </p>
-              </div>
-            ))}
+                  <div>
+                    {isUser ? (
+                      <MessageBody content={content} isUser />
+                    ) : (
+                      <div className="space-y-3">
+                        {assistantBlocks.map((block) => {
+                          if (block.kind === "markdown_text") {
+                            return (
+                              <AssistantTextBlock
+                                key={block.key}
+                                content={block.content}
+                                streaming={block.streaming}
+                              />
+                            );
+                          }
 
-            {activeRun ? (
+                          if (block.kind === "tool_step") {
+                            return (
+                              <AssistantToolCard
+                                key={block.key}
+                                entry={block.entry}
+                                streaming={block.streaming}
+                              />
+                            );
+                          }
+
+                          return (
+                            <AssistantLifecycleNote
+                              key={block.key}
+                              entry={block.entry}
+                              streaming={block.streaming}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                    {attachments.length ? (
+                      <div
+                        className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
+                          isUser ? "border-stone-950/12" : "border-white/8"
+                        }`}
+                      >
+                        {attachments.map((attachment) => (
+                          <AttachmentBadge
+                            key={attachment.id}
+                            attachment={attachment}
+                            tone={isUser ? "user-message" : "assistant-message"}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <p className={`mt-1 text-[10px] ${isUser ? "text-stone-700" : "text-stone-500"}`}>
+                    {formatRelativeDate(createdAt)}
+                  </p>
+                </div>
+              );
+            })}
+
+            {activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? (
               <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-white/8 bg-black/25 px-2 py-1.75 text-stone-100 sm:px-3 sm:py-2">
                 <div>
-                  <MessageBody
-                    content={activeRun.draftAssistantContent}
-                    isUser={false}
-                    streaming={loading || activeRun.status === "STARTING" || activeRun.status === "STREAMING"}
-                  />
-                  {loading || activeRun.status === "STARTING" || activeRun.status === "STREAMING" ? <StreamingSpinner /> : null}
+                  <div className="space-y-3">
+                    {activeRunBlocks.map((block) => {
+                      if (block.kind === "markdown_text") {
+                        return (
+                          <AssistantTextBlock
+                            key={block.key}
+                            content={block.content}
+                            streaming={block.streaming}
+                          />
+                        );
+                      }
+
+                      if (block.kind === "tool_step") {
+                        return (
+                          <AssistantToolCard
+                            key={block.key}
+                            entry={block.entry}
+                            streaming={block.streaming}
+                          />
+                        );
+                      }
+
+                      return (
+                        <AssistantLifecycleNote
+                          key={block.key}
+                          entry={block.entry}
+                          streaming={block.streaming}
+                        />
+                      );
+                    })}
+                    {activeRunBlocks.length === 0 ? (
+                      <div className="flex items-center text-sm text-stone-400">
+                        <StreamingSpinner />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <p className="mt-1 text-[10px] text-stone-500">
-                  {activeRun.status === "ABORTED"
-                    ? "Interrupted"
-                    : activeRun.status === "FAILED"
-                      ? activeRun.errorMessage ?? "Failed"
-                      : formatRelativeDate(activeRun.updatedAt)}
-                </p>
+                <p className="mt-1 text-[10px] text-stone-500">{formatRelativeDate(activeRun.updatedAt)}</p>
               </div>
             ) : null}
           </div>
