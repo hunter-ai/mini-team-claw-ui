@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -20,6 +20,7 @@ type Message = {
   role: "USER" | "ASSISTANT" | "SYSTEM";
   content: string;
   createdAt: string;
+  attachments: Attachment[];
 };
 
 type Attachment = {
@@ -82,7 +83,51 @@ function parseStreamEvent(line: string) {
   }
 }
 
+function formatFileSize(size: number) {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024;
+  let index = 0;
+
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function AttachmentBadge({
+  attachment,
+  muted = false,
+}: {
+  attachment: Attachment;
+  muted?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex flex-wrap items-center gap-1 rounded-full border px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px] ${
+        muted
+          ? "border-white/8 bg-white/[0.04] text-stone-400"
+          : "border-amber-300/20 bg-amber-400/15 text-amber-100"
+      }`}
+    >
+      <span className="font-medium">{attachment.originalName}</span>
+      <span className={muted ? "text-stone-500" : "text-amber-100/70"}>
+        {attachment.mime || "unknown"} · {formatFileSize(attachment.size)}
+      </span>
+    </span>
+  );
+}
+
 function MessageBody({ content, isUser }: { content: string; isUser: boolean }) {
+  if (!content.trim()) {
+    return null;
+  }
+
   if (isUser) {
     return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
   }
@@ -113,7 +158,6 @@ export function ChatShell({
   initialNextCursor,
   initialActiveSessionId,
   initialMessages,
-  initialAttachments,
   user,
 }: {
   initialSessions: Session[];
@@ -121,7 +165,6 @@ export function ChatShell({
   initialNextCursor: string | null;
   initialActiveSessionId: string | null;
   initialMessages: Message[];
-  initialAttachments: Attachment[];
   user: UserShape;
 }) {
   const pageSize = 30;
@@ -132,18 +175,44 @@ export function ChatShell({
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialActiveSessionId);
   const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments);
   const [text, setText] = useState("");
-  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [pairing, setPairing] = useState<Extract<StreamEvent, { type: "pairing_required" }>["pairing"] | null>(null);
   const abortController = useRef<AbortController | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
+  const shouldSnapMessagesToBottomRef = useRef(true);
+  const shouldStickMessagesToBottomRef = useRef(false);
+  const isProgrammaticMessagesScrollRef = useRef(false);
+
+  const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const scroller = messagesScrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+
+    isProgrammaticMessagesScrollRef.current = true;
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+    requestAnimationFrame(() => {
+      isProgrammaticMessagesScrollRef.current = false;
+    });
+  }, []);
+
+  const isNearMessagesBottom = useCallback(() => {
+    const scroller = messagesScrollerRef.current;
+    if (!scroller) {
+      return true;
+    }
+
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+  }, []);
 
   async function loadSession(sessionId: string) {
     setError(null);
@@ -158,10 +227,9 @@ export function ChatShell({
     const payload = (await response.json()) as {
       session: { id: string };
       messages: Message[];
-      attachments: Attachment[];
     };
     setMessages(payload.messages);
-    setAttachments(payload.attachments);
+    setPendingAttachments([]);
   }
 
   const activeSession = useMemo(
@@ -235,9 +303,22 @@ export function ChatShell({
     return () => observer.disconnect();
   }, [drawerOpen, hasMore, loadingMore, loadMoreSessions, nextCursor, sessions.length]);
 
+  useLayoutEffect(() => {
+    if (!shouldSnapMessagesToBottomRef.current && !shouldStickMessagesToBottomRef.current) {
+      return;
+    }
+
+    syncMessagesToBottom();
+    shouldSnapMessagesToBottomRef.current = false;
+  }, [messages, syncMessagesToBottom]);
+
   async function selectSession(sessionId: string) {
     setPairing(null);
+    setShowScrollToBottom(false);
     setActiveSessionId(sessionId);
+    setPendingAttachments([]);
+    shouldSnapMessagesToBottomRef.current = true;
+    shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
     await loadSession(sessionId);
   }
@@ -253,9 +334,11 @@ export function ChatShell({
     setSessions((current) => [payload.session, ...current]);
     setActiveSessionId(payload.session.id);
     setMessages([]);
-    setAttachments([]);
-    setPendingAttachmentIds([]);
+    setPendingAttachments([]);
     setPairing(null);
+    setShowScrollToBottom(false);
+    shouldSnapMessagesToBottomRef.current = true;
+    shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
   }
 
@@ -266,7 +349,7 @@ export function ChatShell({
 
     setUploading(true);
     setError(null);
-    const nextIds: string[] = [];
+    const nextAttachments: Attachment[] = [];
 
     for (const file of Array.from(files)) {
       const formData = new FormData();
@@ -285,27 +368,29 @@ export function ChatShell({
       }
 
       const payload = (await response.json()) as { attachment: Attachment };
-      nextIds.push(payload.attachment.id);
-      setAttachments((current) => [payload.attachment, ...current]);
+      nextAttachments.push(payload.attachment);
     }
 
-    setPendingAttachmentIds((current) => [...current, ...nextIds]);
+    setPendingAttachments((current) => [...current, ...nextAttachments]);
     setUploading(false);
   }
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!activeSessionId || !text.trim() || loading) {
+    const trimmedText = text.trim();
+    if (!activeSessionId || loading || (!trimmedText && pendingAttachments.length === 0)) {
       return;
     }
-    const inputText = text;
-    const attachmentIds = pendingAttachmentIds;
+    const inputText = trimmedText ? text : "";
+    const selectedAttachments = pendingAttachments;
+    const attachmentIds = selectedAttachments.map((attachment) => attachment.id);
 
     const userMessage: Message = {
       id: `local-user-${Date.now()}`,
       role: "USER",
       content: inputText,
       createdAt: new Date().toISOString(),
+      attachments: selectedAttachments,
     };
     const streamingAssistantId = `local-assistant-${Date.now()}`;
     const assistantMessage: Message = {
@@ -313,14 +398,18 @@ export function ChatShell({
       role: "ASSISTANT",
       content: "",
       createdAt: new Date().toISOString(),
+      attachments: [],
     };
 
+    shouldSnapMessagesToBottomRef.current = true;
+    shouldStickMessagesToBottomRef.current = true;
+    setShowScrollToBottom(false);
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setLoading(true);
     setError(null);
     setPairing(null);
     setText("");
-    setPendingAttachmentIds([]);
+    setPendingAttachments([]);
     abortController.current = new AbortController();
 
     const response = await fetch(`/api/sessions/${activeSessionId}/messages`, {
@@ -390,7 +479,11 @@ export function ChatShell({
         }
 
         if (payload.type === "done") {
+          shouldSnapMessagesToBottomRef.current = shouldStickMessagesToBottomRef.current;
+          shouldStickMessagesToBottomRef.current = false;
+          setShowScrollToBottom(false);
           setMessages(payload.messages);
+          setPendingAttachments([]);
           setSessions((current) =>
             current.map((session) =>
               session.id === payload.session.id ? payload.session : session,
@@ -402,6 +495,8 @@ export function ChatShell({
         }
 
         if (payload.type === "pairing_required") {
+          shouldStickMessagesToBottomRef.current = false;
+          setShowScrollToBottom(false);
           setPairing(payload.pairing);
           setMessages((current) => current.filter((message) => message.id !== streamingAssistantId));
           streamFinished = true;
@@ -454,8 +549,32 @@ export function ChatShell({
     }
 
     abortController.current?.abort();
+    shouldStickMessagesToBottomRef.current = false;
+    setShowScrollToBottom(false);
     await fetch(`/api/sessions/${activeSessionId}/abort`, { method: "POST" });
     setLoading(false);
+  }
+
+  function handleMessagesScroll() {
+    if (isProgrammaticMessagesScrollRef.current || !loading) {
+      return;
+    }
+
+    if (!isNearMessagesBottom()) {
+      shouldStickMessagesToBottomRef.current = false;
+      setShowScrollToBottom(true);
+      return;
+    }
+
+    shouldStickMessagesToBottomRef.current = true;
+    setShowScrollToBottom(false);
+  }
+
+  function handleScrollToBottomClick() {
+    shouldSnapMessagesToBottomRef.current = true;
+    shouldStickMessagesToBottomRef.current = loading;
+    setShowScrollToBottom(false);
+    syncMessagesToBottom("smooth");
   }
 
   return (
@@ -607,7 +726,7 @@ export function ChatShell({
 
       <section
         aria-label={`Chat workspace for ${user.openclawAgentId}`}
-        className="flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.06))] shadow-[0_25px_80px_rgba(0,0,0,0.24)]"
+        className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.06))] shadow-[0_25px_80px_rgba(0,0,0,0.24)]"
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/8 px-2 py-1.5">
           <div className="flex min-w-0 items-center gap-2">
@@ -635,7 +754,11 @@ export function ChatShell({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2 sm:py-2">
+        <div
+          ref={messagesScrollerRef}
+          onScroll={handleMessagesScroll}
+          className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2 sm:py-2"
+        >
           <div className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
             {pairing ? (
               <div className="max-w-[96ch] rounded-[0.9rem] border border-amber-400/20 bg-amber-400/10 px-3 py-2.5 text-amber-100 sm:px-4 sm:py-3">
@@ -677,12 +800,23 @@ export function ChatShell({
                 key={message.id}
                 className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
                   message.role === "USER"
-                    ? "ml-auto w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
+                    ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
                     : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
                 }`}
               >
                 <div>
                   <MessageBody content={message.content} isUser={message.role === "USER"} />
+                  {message.attachments.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {message.attachments.map((attachment) => (
+                        <AttachmentBadge
+                          key={attachment.id}
+                          attachment={attachment}
+                          muted={message.role !== "USER"}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {loading &&
                   message.id === messages[messages.length - 1]?.id &&
                   message.role === "ASSISTANT" ? (
@@ -701,26 +835,29 @@ export function ChatShell({
           </div>
         </div>
 
+        {showScrollToBottom ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-[7.5rem] z-10 flex justify-center px-3 sm:bottom-[8.75rem]">
+            <button
+              type="button"
+              onClick={handleScrollToBottomClick}
+              className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-[#18120df2] px-3 py-1.5 text-[11px] font-medium text-amber-100 shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition hover:border-amber-300/60 hover:bg-[#21170ff2]"
+            >
+              <span aria-hidden="true" className="text-xs leading-none">↓</span>
+              <span>{loading ? "New messages" : "Back to bottom"}</span>
+            </button>
+          </div>
+        ) : null}
+
         <div className="shrink-0 border-t border-white/8 bg-black/20 px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2">
           <div className="mx-auto w-full max-w-none">
             <div className="rounded-[0.85rem] border border-white/10 bg-[#0f0d0cf0] px-1.5 py-1.5 sm:px-2 sm:py-2">
-              <div className="mb-1.5 flex flex-wrap gap-1">
-                {attachments.slice(0, 10).map((attachment) => {
-                  const pending = pendingAttachmentIds.includes(attachment.id);
-                  return (
-                    <span
-                      key={attachment.id}
-                      className={`rounded-full border px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px] ${
-                        pending
-                          ? "border-amber-300/20 bg-amber-400/15 text-amber-100"
-                          : "border-white/8 bg-white/[0.04] text-stone-400"
-                      }`}
-                    >
-                      {attachment.originalName}
-                    </span>
-                  );
-                })}
-              </div>
+              {pendingAttachments.length ? (
+                <div className="mb-1.5 flex flex-wrap gap-1">
+                  {pendingAttachments.map((attachment) => (
+                    <AttachmentBadge key={attachment.id} attachment={attachment} />
+                  ))}
+                </div>
+              ) : null}
               <form onSubmit={sendMessage} className="px-0.5 py-0.5">
                 <textarea
                   value={text}
@@ -737,15 +874,23 @@ export function ChatShell({
                         type="file"
                         className="hidden"
                         multiple
-                        disabled={!activeSessionId || uploading}
-                        onChange={(event) => void uploadFiles(event.target.files)}
+                        disabled={!activeSessionId || uploading || loading}
+                        onChange={(event) => {
+                          void uploadFiles(event.target.files);
+                          event.target.value = "";
+                        }}
                       />
                       {uploading ? "Uploading..." : "Attach"}
                     </label>
                   </div>
                   <button
                     type="submit"
-                    disabled={!activeSessionId || loading || uploading || !text.trim()}
+                    disabled={
+                      !activeSessionId ||
+                      loading ||
+                      uploading ||
+                      (!text.trim() && pendingAttachments.length === 0)
+                    }
                     className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-[10px] font-semibold text-stone-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-100 sm:px-3 sm:py-1.5 sm:text-[11px]"
                   >
                     {loading ? "Sending..." : "Send"}

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { MessageRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { composePrompt, sendToOpenClaw } from "@/lib/openclaw/chat";
+import { toChatMessageViews } from "@/lib/chat-presenter";
+import { buildOpenClawInput, sendToOpenClaw } from "@/lib/openclaw/chat";
 import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import { prisma } from "@/lib/prisma";
 import {
@@ -14,9 +15,22 @@ import {
 export const runtime = "nodejs";
 
 const schema = z.object({
-  message: z.string().min(1),
+  message: z.string().default(""),
   attachmentIds: z.array(z.string()).default([]),
 });
+
+function buildTitleSource(message: string, attachmentNames: string[]) {
+  const trimmed = message.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  if (!attachmentNames.length) {
+    return undefined;
+  }
+
+  return attachmentNames.join(", ");
+}
 
 export async function GET(
   _: Request,
@@ -38,18 +52,7 @@ export async function GET(
       id: session.id,
       title: session.title,
     },
-    messages: session.messages.map((message) => ({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      createdAt: message.createdAt.toISOString(),
-    })),
-    attachments: session.attachments.map((attachment) => ({
-      id: attachment.id,
-      originalName: attachment.originalName,
-      mime: attachment.mime,
-      size: attachment.size,
-    })),
+    messages: toChatMessageViews(session.messages, session.attachments),
   });
 }
 
@@ -68,6 +71,13 @@ export async function POST(
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  const messageText = payload.data.message.trim();
+  const attachmentIds = [...new Set(payload.data.attachmentIds)];
+
+  if (!messageText && attachmentIds.length === 0) {
+    return NextResponse.json({ error: "Message or attachment is required" }, { status: 400 });
+  }
+
   const session = await getChatSessionForUser(user.id, sessionId);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -80,42 +90,73 @@ export async function POST(
     userId: user.id,
   });
 
-  const attachmentRecords = payload.data.attachmentIds.length
+  const attachmentRecords = attachmentIds.length
     ? await prisma.attachment.findMany({
         where: {
-          id: { in: payload.data.attachmentIds },
+          id: { in: attachmentIds },
           userId: user.id,
+          sessionId: session.id,
         },
       })
     : [];
 
-  const prompt = composePrompt(
-    payload.data.message,
-    attachmentRecords.map((attachment) => attachment.hostPath),
-  );
-  const encoder = new TextEncoder();
-
-  if (attachmentRecords.length) {
-    await prisma.attachment.updateMany({
-      where: {
-        id: { in: attachmentRecords.map((attachment) => attachment.id) },
-      },
-      data: {
-        sessionId: session.id,
-      },
-    });
+  if (attachmentRecords.length !== attachmentIds.length) {
+    return NextResponse.json({ error: "Some attachments are unavailable for this session" }, { status: 400 });
   }
 
-  await addCachedMessage({
+  const attachmentOrder = new Map(attachmentIds.map((attachmentId, index) => [attachmentId, index]));
+  const orderedAttachmentRecords = [...attachmentRecords].sort(
+    (left, right) => (attachmentOrder.get(left.id) ?? 0) - (attachmentOrder.get(right.id) ?? 0),
+  );
+
+  if (attachmentIds.length) {
+    const existingAttachmentUsage = await prisma.chatMessageCache.findFirst({
+      where: {
+        sessionId: session.id,
+        attachmentIds: {
+          hasSome: attachmentIds,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existingAttachmentUsage) {
+      return NextResponse.json({ error: "Some attachments were already sent" }, { status: 409 });
+    }
+  }
+
+  const input = buildOpenClawInput({
+    text: messageText,
+    attachments: orderedAttachmentRecords.map((attachment) => ({
+      id: attachment.id,
+      hostPath: attachment.hostPath,
+    })),
+  });
+  const encoder = new TextEncoder();
+
+  const userMessage = await addCachedMessage({
     sessionId: session.id,
     role: MessageRole.USER,
-    content: payload.data.message,
-    attachmentIds: attachmentRecords.map((attachment) => attachment.id),
+    content: messageText,
+    attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
+  });
+
+  console.log("[api/messages] prepared user message", {
+    sessionId: session.id,
+    userMessageId: userMessage.id,
+    attachmentIds: input.attachmentIds,
+    attachmentCount: input.attachmentIds.length,
+    sendMode: input.mode,
   });
 
   await touchSession(
     session.id,
-    session.messages.length === 0 ? payload.data.message : undefined,
+    session.messages.length === 0
+      ? buildTitleSource(
+          messageText,
+          orderedAttachmentRecords.map((attachment) => attachment.originalName),
+        )
+      : undefined,
   );
 
   const stream = new ReadableStream<Uint8Array>({
@@ -128,7 +169,7 @@ export async function POST(
         const result = await sendToOpenClaw({
           agentId: session.agentId,
           openclawSessionId: session.openclawSessionId,
-          message: prompt,
+          message: input.message,
           onDelta: (delta) => {
             sendEvent({ type: "delta", delta });
           },
@@ -162,19 +203,18 @@ export async function POST(
             content: assistantMessage.content,
             createdAt: assistantMessage.createdAt.toISOString(),
           },
-          messages: updated.messages.map((message) => ({
-            id: message.id,
-            role: message.role,
-            content: message.content,
-            createdAt: message.createdAt.toISOString(),
-          })),
+          messages: toChatMessageViews(updated.messages, updated.attachments),
         });
       } catch (error) {
         console.error("[api/messages] sendToOpenClaw failed", {
           sessionId: session.id,
+          userMessageId: userMessage.id,
           agentId: session.agentId,
           openclawSessionId: session.openclawSessionId,
           userId: user.id,
+          attachmentIds: input.attachmentIds,
+          attachmentCount: input.attachmentIds.length,
+          sendMode: input.mode,
           error:
             error instanceof Error
               ? {

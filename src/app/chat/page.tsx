@@ -1,4 +1,5 @@
 import { ChatShell } from "@/components/chat-shell";
+import { toChatMessageViews } from "@/lib/chat-presenter";
 import { requireUser } from "@/lib/auth";
 import {
   getChatSessionForUser,
@@ -23,22 +24,7 @@ export default async function ChatPage() {
         initialHasMore={pageInfo.hasMore}
         initialNextCursor={pageInfo.nextCursor}
         initialActiveSessionId={sessions[0]?.id ?? null}
-        initialMessages={
-          firstSession?.messages.map((message) => ({
-            id: message.id,
-            role: message.role,
-            content: message.content,
-            createdAt: message.createdAt.toISOString(),
-          })) ?? []
-        }
-        initialAttachments={
-          firstSession?.attachments.map((attachment) => ({
-            id: attachment.id,
-            originalName: attachment.originalName,
-            mime: attachment.mime,
-            size: attachment.size,
-          })) ?? []
-        }
+        initialMessages={firstSession ? toChatMessageViews(firstSession.messages, firstSession.attachments) : []}
         user={{
           username: user.username,
           role: user.role,
