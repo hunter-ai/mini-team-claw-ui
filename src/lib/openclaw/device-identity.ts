@@ -19,6 +19,15 @@ type StoredIdentity = {
   privateKeySeed: string;
   deviceToken: string;
   tokenScopes: string[];
+  lastPairedAt: Date | null;
+  lastPairingStatus: string | null;
+  lastPairingMessage: string | null;
+  lastPairingRequestId: string | null;
+  lastPairingRequestedAt: Date | null;
+  lastRequestedScopes: string[];
+  lastPairingClientId: string | null;
+  lastPairingClientMode: string | null;
+  lastPairingClientPlatform: string | null;
 };
 
 type SigningParams = {
@@ -118,6 +127,15 @@ async function loadOrCreateStoredIdentity(): Promise<StoredIdentity> {
       privateKeySeed: decrypt(existing.privateKeyEncrypted),
       deviceToken: existing.deviceTokenEncrypted ? decrypt(existing.deviceTokenEncrypted) : "",
       tokenScopes: existing.tokenScopes,
+      lastPairedAt: existing.lastPairedAt,
+      lastPairingStatus: existing.lastPairingStatus,
+      lastPairingMessage: existing.lastPairingMessage,
+      lastPairingRequestId: existing.lastPairingRequestId,
+      lastPairingRequestedAt: existing.lastPairingRequestedAt,
+      lastRequestedScopes: existing.lastRequestedScopes,
+      lastPairingClientId: existing.lastPairingClientId,
+      lastPairingClientMode: existing.lastPairingClientMode,
+      lastPairingClientPlatform: existing.lastPairingClientPlatform,
     };
   }
 
@@ -136,6 +154,15 @@ async function loadOrCreateStoredIdentity(): Promise<StoredIdentity> {
     ...generated,
     deviceToken: "",
     tokenScopes: [],
+    lastPairedAt: null,
+    lastPairingStatus: null,
+    lastPairingMessage: null,
+    lastPairingRequestId: null,
+    lastPairingRequestedAt: null,
+    lastRequestedScopes: [],
+    lastPairingClientId: null,
+    lastPairingClientMode: null,
+    lastPairingClientPlatform: null,
   };
 }
 
@@ -163,6 +190,21 @@ export async function buildGatewayDeviceIdentity(params: SigningParams): Promise
     signedAt,
     nonce: params.nonce,
   };
+}
+
+export type PersistGatewayPairingStateInput = {
+  status: string | null;
+  message?: string | null;
+  requestId?: string | null;
+  requestedAt?: Date | null;
+  requestedScopes?: string[];
+  clientId?: string | null;
+  clientMode?: string | null;
+  clientPlatform?: string | null;
+};
+
+export async function getStoredGatewayIdentity() {
+  return loadOrCreateStoredIdentity();
 }
 
 export async function resolveGatewayAuthToken(sharedToken: string) {
@@ -196,6 +238,31 @@ export async function persistGatewayDeviceToken(auth: HelloOkAuth | undefined) {
       deviceTokenEncrypted: encrypt(deviceToken),
       tokenScopes,
       lastPairedAt: new Date(),
+      lastPairingStatus: "healthy",
+      lastPairingMessage: null,
+      lastPairingRequestId: null,
+      lastPairingRequestedAt: null,
+      lastRequestedScopes: [],
+      lastPairingClientId: null,
+      lastPairingClientMode: null,
+      lastPairingClientPlatform: null,
+    },
+  });
+}
+
+export async function persistGatewayPairingState(input: PersistGatewayPairingStateInput) {
+  await loadOrCreateStoredIdentity();
+  await prisma.gatewayOperatorIdentity.update({
+    where: { id: IDENTITY_ROW_ID },
+    data: {
+      lastPairingStatus: input.status,
+      lastPairingMessage: input.message ?? null,
+      lastPairingRequestId: input.requestId ?? null,
+      lastPairingRequestedAt: input.requestedAt ?? null,
+      lastRequestedScopes: input.requestedScopes ?? [],
+      lastPairingClientId: input.clientId ?? null,
+      lastPairingClientMode: input.clientMode ?? null,
+      lastPairingClientPlatform: input.clientPlatform ?? null,
     },
   });
 }

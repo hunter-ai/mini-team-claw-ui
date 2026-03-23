@@ -104,6 +104,14 @@ model GatewayOperatorIdentity {
   deviceTokenEncrypted String?
   tokenScopes         String[] @default([])
   lastPairedAt        DateTime?
+  lastPairingStatus   String?
+  lastPairingMessage  String?
+  lastPairingRequestId String?
+  lastPairingRequestedAt DateTime?
+  lastRequestedScopes String[] @default([])
+  lastPairingClientId String?
+  lastPairingClientMode String?
+  lastPairingClientPlatform String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

@@ -3,6 +3,7 @@ import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { refreshGatewayPairingSummary } from "@/lib/openclaw/pairing";
 import { prisma } from "@/lib/prisma";
 
 const createSchema = z.object({
@@ -66,5 +67,14 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json({ user: createdUser }, { status: 201 });
+  const pairing = await refreshGatewayPairingSummary().catch(() => ({
+    status: "failed" as const,
+    message: "Member created, but pairing precheck failed.",
+    deviceId: "",
+    lastPairedAt: null,
+    tokenScopes: [],
+    pendingRequests: [],
+  }));
+
+  return NextResponse.json({ user: createdUser, pairing }, { status: 201 });
 }

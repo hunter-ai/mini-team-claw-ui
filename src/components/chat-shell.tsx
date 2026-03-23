@@ -39,6 +39,24 @@ type StreamEvent =
       delta: string;
     }
   | {
+      type: "pairing_required";
+      pairing: {
+        status: "pairing_required";
+        message: string;
+        deviceId: string | null;
+        lastPairedAt: string | null;
+        pendingRequests: Array<{
+          requestId: string | null;
+          requestedAt: string | null;
+          scopes: string[];
+          clientId: string | null;
+          clientMode: string | null;
+          clientPlatform: string | null;
+          message: string | null;
+        }>;
+      };
+    }
+  | {
       type: "done";
       session: Session;
       assistantMessage: Message;
@@ -101,6 +119,7 @@ export function ChatShell({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pairing, setPairing] = useState<Extract<StreamEvent, { type: "pairing_required" }>["pairing"] | null>(null);
   const abortController = useRef<AbortController | null>(null);
 
   async function loadSession(sessionId: string) {
@@ -140,6 +159,7 @@ export function ChatShell({
     setMessages([]);
     setAttachments([]);
     setPendingAttachmentIds([]);
+    setPairing(null);
     setDrawerOpen(false);
   }
 
@@ -202,6 +222,7 @@ export function ChatShell({
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setLoading(true);
     setError(null);
+    setPairing(null);
     setText("");
     setPendingAttachmentIds([]);
     abortController.current = new AbortController();
@@ -252,6 +273,7 @@ export function ChatShell({
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let streamFinished = false;
 
     try {
       const consumeLine = (line: string) => {
@@ -278,15 +300,31 @@ export function ChatShell({
               session.id === payload.session.id ? payload.session : session,
             ),
           );
+          streamFinished = true;
+          setLoading(false);
+          return;
+        }
+
+        if (payload.type === "pairing_required") {
+          setPairing(payload.pairing);
+          setMessages((current) => current.filter((message) => message.id !== streamingAssistantId));
+          streamFinished = true;
+          setLoading(false);
+          void loadSession(activeSessionId);
           return;
         }
 
         if (payload.type === "error") {
+          streamFinished = true;
           throw new Error(payload.error);
         }
       };
 
       while (true) {
+        if (streamFinished) {
+          break;
+        }
+
         const { done, value } = await reader.read();
         buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
 
@@ -302,7 +340,7 @@ export function ChatShell({
         }
       }
 
-      if (buffer.trim()) {
+      if (!streamFinished && buffer.trim()) {
         consumeLine(buffer);
       }
     } catch (streamError) {
@@ -359,6 +397,7 @@ export function ChatShell({
                 key={session.id}
                 type="button"
                 onClick={() => {
+                  setPairing(null);
                   setActiveSessionId(session.id);
                   void loadSession(session.id);
                   setDrawerOpen(false);
@@ -410,6 +449,28 @@ export function ChatShell({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5">
+          {pairing ? (
+            <div className="max-w-3xl rounded-[1.8rem] border border-amber-400/20 bg-amber-400/10 px-5 py-4 text-amber-100">
+              <p className="text-sm font-semibold">当前设备尚未完成绑定</p>
+              <p className="mt-2 text-sm text-amber-100/80">
+                请联系管理员进行设备绑定，完成后即可继续使用。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPairing(null);
+                    if (activeSessionId) {
+                      void loadSession(activeSessionId);
+                    }
+                  }}
+                  className="rounded-full border border-amber-100/30 px-4 py-2 text-sm font-medium text-amber-50 transition hover:border-amber-100/60"
+                >
+                  Retry connection
+                </button>
+              </div>
+            </div>
+          ) : null}
           {messages.length ? null : (
             <div className="rounded-[1.8rem] border border-dashed border-white/12 bg-black/15 p-6 text-sm text-stone-400">
               Each session maps to the same OpenClaw agent but keeps a separate session key. Use

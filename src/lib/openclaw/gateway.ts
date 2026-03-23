@@ -3,6 +3,7 @@ import { WebSocket } from "ws";
 import { getEnv } from "@/lib/env";
 import {
   buildGatewayDeviceIdentity,
+  persistGatewayPairingState,
   persistGatewayDeviceToken,
   resolveGatewayAuthToken,
 } from "@/lib/openclaw/device-identity";
@@ -75,6 +76,18 @@ type GatewayConnectProfile = {
   };
 };
 
+type GatewayClientMode = "session" | "pairing-admin";
+
+type PairingRequest = {
+  requestId: string | null;
+  requestedAt: string | null;
+  scopes: string[];
+  clientId: string | null;
+  clientMode: string | null;
+  clientPlatform: string | null;
+  message: string | null;
+};
+
 const OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
@@ -119,20 +132,144 @@ function buildConnectProfile(token: string): GatewayConnectProfile {
   };
 }
 
+function buildPairingAdminProfile(token: string): GatewayConnectProfile {
+  return {
+    socketOptions: {},
+    connectParams: {
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: "gateway-admin-ui",
+        version: "0.1.0",
+        platform: "node",
+        mode: "backend",
+      },
+      role: "operator",
+      scopes: [...OPERATOR_SCOPES],
+      auth: token ? { token } : {},
+      locale: "en-US",
+      userAgent: "MiniTeamClawUI/0.1.0",
+      caps: [...CONNECT_CAPS],
+    },
+  };
+}
+
+function asRecord(value: unknown) {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function firstNonEmptyStringArray(...values: unknown[]) {
+  for (const value of values) {
+    const next = readStringArray(value);
+    if (next.length) {
+      return next;
+    }
+  }
+
+  return [];
+}
+
+function readDateIso(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
+}
+
+function extractPairingRequest(details: Record<string, unknown> | null, fallbackMessage?: string): PairingRequest | null {
+  if (!details && !fallbackMessage) {
+    return null;
+  }
+
+  return {
+    requestId:
+      readString(details?.requestId) ??
+      readString(details?.pairingRequestId) ??
+      readString(details?.id) ??
+      null,
+    requestedAt:
+      readDateIso(details?.requestedAt) ??
+      readDateIso(details?.createdAt) ??
+      readDateIso(details?.requested_at) ??
+      null,
+    scopes: firstNonEmptyStringArray(
+      details?.requestedScopes,
+      details?.scopes,
+      details?.requested_scopes,
+    ),
+    clientId: readString(details?.clientId) ?? readString(details?.client_id) ?? null,
+    clientMode: readString(details?.clientMode) ?? readString(details?.client_mode) ?? null,
+    clientPlatform:
+      readString(details?.clientPlatform) ?? readString(details?.client_platform) ?? null,
+    message: fallbackMessage ?? readString(details?.message) ?? null,
+  };
+}
+
+export class OpenClawGatewayError extends Error {
+  code: string | null;
+  detailCode: string | null;
+  details: Record<string, unknown> | null;
+  pairingRequest: PairingRequest | null;
+
+  constructor({
+    message,
+    code,
+    detailCode,
+    details,
+  }: {
+    message: string;
+    code: string | null;
+    detailCode: string | null;
+    details: Record<string, unknown> | null;
+  }) {
+    super(message);
+    this.name = "OpenClawGatewayError";
+    this.code = code;
+    this.detailCode = detailCode;
+    this.details = details;
+    this.pairingRequest = detailCode === "PAIRING_REQUIRED" ? extractPairingRequest(details, message) : null;
+  }
+}
+
 export class OpenClawGatewayClient {
   private ws?: WebSocket;
+  private frameQueue: Array<GatewayResponse | GatewayEvent> = [];
+  private pendingReceivers: Array<{
+    resolve: (frame: GatewayResponse | GatewayEvent) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private socketError: Error | null = null;
 
-  async connect() {
+  async connect(mode: GatewayClientMode = "session") {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       return;
     }
 
     const env = getEnv();
     const token = env.OPENCLAW_GATEWAY_TOKEN ?? "";
-    const profile = buildConnectProfile(token);
+    const profile = mode === "pairing-admin" ? buildPairingAdminProfile(token) : buildConnectProfile(token);
 
     try {
       this.ws = new WebSocket(env.OPENCLAW_GATEWAY_URL, profile.socketOptions);
+      this.attachSocketListeners();
       await new Promise<void>((resolve, reject) => {
         this.ws?.once("open", () => resolve());
         this.ws?.once("error", reject);
@@ -146,25 +283,30 @@ export class OpenClawGatewayClient {
       }
 
       const authState = await resolveGatewayAuthToken(token);
-      if (!authState.tokenForSignature) {
-        throw new Error(
-          "[openclaw] connect failed: no gateway auth token is available for device authentication",
-        );
-      }
+      const device =
+        mode === "pairing-admin"
+          ? undefined
+          : await (async () => {
+              if (!authState.tokenForSignature) {
+                throw new Error(
+                  "[openclaw] connect failed: no gateway auth token is available for device authentication",
+                );
+              }
 
-      const device = await buildGatewayDeviceIdentity({
-        clientId: profile.connectParams.client.id,
-        clientMode: profile.connectParams.client.mode,
-        role: profile.connectParams.role,
-        scopes: profile.connectParams.scopes,
-        token: authState.tokenForSignature,
-        nonce,
-      });
+              return buildGatewayDeviceIdentity({
+                clientId: profile.connectParams.client.id,
+                clientMode: profile.connectParams.client.mode,
+                role: profile.connectParams.role,
+                scopes: profile.connectParams.scopes,
+                token: authState.tokenForSignature,
+                nonce,
+              });
+            })();
 
       const response = await this.request("connect", {
         ...profile.connectParams,
         auth: authState.auth,
-        device,
+        ...(device ? { device } : {}),
       });
 
       if (!response.ok) {
@@ -172,6 +314,7 @@ export class OpenClawGatewayClient {
           typeof response.error?.details?.code === "string"
             ? response.error.details.code
             : null;
+        const detailsRecord = asRecord(response.error?.details);
         const details = {
           code: response.error?.code ?? null,
           detailCode,
@@ -182,7 +325,34 @@ export class OpenClawGatewayClient {
           scopes: profile.connectParams.scopes,
         };
         console.error("[openclaw] connect rejected", details);
-        throw new Error(this.formatConnectError(details));
+        if (detailCode === "PAIRING_REQUIRED" && mode === "session") {
+          const pairingRequest = extractPairingRequest(detailsRecord, response.error?.message);
+          await persistGatewayPairingState({
+            status: "pairing_required",
+            message: response.error?.message ?? "Device pairing required",
+            requestId: pairingRequest?.requestId ?? null,
+            requestedAt: pairingRequest?.requestedAt ? new Date(pairingRequest.requestedAt) : new Date(),
+            requestedScopes: pairingRequest?.scopes ?? profile.connectParams.scopes,
+            clientId: pairingRequest?.clientId ?? profile.connectParams.client.id,
+            clientMode: pairingRequest?.clientMode ?? profile.connectParams.client.mode,
+            clientPlatform: pairingRequest?.clientPlatform ?? profile.connectParams.client.platform,
+          });
+        } else if (mode === "session") {
+          await persistGatewayPairingState({
+            status: "failed",
+            message: response.error?.message ?? "OpenClaw connect failed",
+            requestedScopes: profile.connectParams.scopes,
+            clientId: profile.connectParams.client.id,
+            clientMode: profile.connectParams.client.mode,
+            clientPlatform: profile.connectParams.client.platform,
+          });
+        }
+        throw new OpenClawGatewayError({
+          message: this.formatConnectError(details),
+          code: response.error?.code ?? null,
+          detailCode,
+          details: detailsRecord,
+        });
       }
 
       await persistGatewayDeviceToken(
@@ -190,6 +360,9 @@ export class OpenClawGatewayClient {
           | { deviceToken?: string; scopes?: unknown }
           | undefined,
       );
+      if (mode === "session") {
+        await persistGatewayPairingState({ status: "healthy", message: null });
+      }
     } catch (error) {
       console.error("[openclaw] connect failed", {
         gatewayUrl: env.OPENCLAW_GATEWAY_URL,
@@ -205,11 +378,47 @@ export class OpenClawGatewayClient {
       return;
     }
 
+    const ws = this.ws;
+
+    if (ws.readyState === WebSocket.CLOSED) {
+      this.ws = undefined;
+      this.frameQueue = [];
+      this.pendingReceivers = [];
+      this.socketError = null;
+      return;
+    }
+
     await new Promise<void>((resolve) => {
-      this.ws?.once("close", () => resolve());
-      this.ws?.close();
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve();
+      };
+
+      const timer = setTimeout(() => {
+        ws.removeAllListeners("close");
+        ws.terminate();
+        finish();
+      }, 1000);
+
+      ws.once("close", () => {
+        clearTimeout(timer);
+        finish();
+      });
+
+      if (ws.readyState === WebSocket.CLOSING) {
+        return;
+      }
+
+      ws.close();
     });
     this.ws = undefined;
+    this.frameQueue = [];
+    this.pendingReceivers = [];
+    this.socketError = null;
   }
 
   async abortSession(sessionKey: string) {
@@ -284,6 +493,49 @@ export class OpenClawGatewayClient {
     return { content: output } satisfies ChatResult;
   }
 
+  async listPairingRequests() {
+    const response = await this.request("devices.list", {});
+    if (!response.ok) {
+      const detailCode =
+        typeof response.error?.details?.code === "string" ? response.error.details.code : null;
+      throw new OpenClawGatewayError({
+        message: this.formatRequestError("devices.list", response.error?.message ?? "devices.list failed", detailCode),
+        code: response.error?.code ?? null,
+        detailCode,
+        details: asRecord(response.error?.details),
+      });
+    }
+
+    const payload = asRecord(response.payload) ?? {};
+    const items = Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload.requests)
+        ? payload.requests
+        : [];
+
+    return items
+      .map((item) => extractPairingRequest(asRecord(item)))
+      .filter((item): item is PairingRequest => item !== null);
+  }
+
+  async approvePairingRequest(requestId: string) {
+    const response = await this.request("devices.approve", { requestId });
+    if (!response.ok) {
+      const detailCode =
+        typeof response.error?.details?.code === "string" ? response.error.details.code : null;
+      throw new OpenClawGatewayError({
+        message: this.formatRequestError(
+          "devices.approve",
+          response.error?.message ?? "devices.approve failed",
+          detailCode,
+        ),
+        code: response.error?.code ?? null,
+        detailCode,
+        details: asRecord(response.error?.details),
+      });
+    }
+  }
+
   private async request(method: string, params: Record<string, unknown>) {
     const reqId = randomUUID();
     await this.send({ type: "req", id: reqId, method, params });
@@ -310,25 +562,59 @@ export class OpenClawGatewayClient {
       throw new Error("WebSocket not connected");
     }
 
-    const data = await new Promise<string>((resolve, reject) => {
-      const handleMessage = (value: WebSocket.RawData) => {
-        cleanup();
-        resolve(String(value));
-      };
-      const handleError = (error: Error) => {
-        cleanup();
-        reject(error);
-      };
-      const cleanup = () => {
-        this.ws?.off("message", handleMessage);
-        this.ws?.off("error", handleError);
-      };
+    if (this.frameQueue.length) {
+      return this.frameQueue.shift()!;
+    }
 
-      this.ws?.on("message", handleMessage);
-      this.ws?.on("error", handleError);
+    if (this.socketError) {
+      throw this.socketError;
+    }
+
+    return await new Promise<GatewayResponse | GatewayEvent>((resolve, reject) => {
+      this.pendingReceivers.push({ resolve, reject });
+    });
+  }
+
+  private attachSocketListeners() {
+    if (!this.ws) {
+      return;
+    }
+
+    this.ws.on("message", (value) => {
+      try {
+        const frame = JSON.parse(String(value)) as GatewayResponse | GatewayEvent;
+        const receiver = this.pendingReceivers.shift();
+        if (receiver) {
+          receiver.resolve(frame);
+          return;
+        }
+
+        this.frameQueue.push(frame);
+      } catch (error) {
+        this.rejectPendingReceivers(
+          error instanceof Error ? error : new Error(`Invalid gateway frame: ${String(value)}`),
+        );
+      }
     });
 
-    return JSON.parse(data) as GatewayResponse | GatewayEvent;
+    this.ws.on("error", (error) => {
+      const nextError = error instanceof Error ? error : new Error(String(error));
+      this.socketError = nextError;
+      this.rejectPendingReceivers(nextError);
+    });
+
+    this.ws.on("close", () => {
+      const nextError = this.socketError ?? new Error("Gateway connection closed");
+      this.socketError = nextError;
+      this.rejectPendingReceivers(nextError);
+    });
+  }
+
+  private rejectPendingReceivers(error: Error) {
+    while (this.pendingReceivers.length) {
+      const receiver = this.pendingReceivers.shift();
+      receiver?.reject(error);
+    }
   }
 
   private async send(frame: ReqFrame) {

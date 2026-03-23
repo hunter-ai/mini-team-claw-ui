@@ -3,6 +3,7 @@ import { MessageRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { composePrompt, sendToOpenClaw } from "@/lib/openclaw/chat";
+import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import { prisma } from "@/lib/prisma";
 import {
   addCachedMessage,
@@ -183,10 +184,25 @@ export async function POST(
                 }
               : { message: String(error) },
         });
-        sendEvent({
-          type: "error",
-          error: error instanceof Error ? error.message : "Failed to send",
-        });
+        if (error instanceof OpenClawGatewayError && error.detailCode === "PAIRING_REQUIRED") {
+          sendEvent({
+            type: "pairing_required",
+            pairing: {
+              status: "pairing_required",
+              message: error.message,
+              deviceId:
+                typeof error.details?.deviceId === "string" ? error.details.deviceId : null,
+              lastPairedAt: null,
+              pendingRequests: error.pairingRequest ? [error.pairingRequest] : [],
+            },
+          });
+          return;
+        } else {
+          sendEvent({
+            type: "error",
+            error: error instanceof Error ? error.message : "Failed to send",
+          });
+        }
       } finally {
         controller.close();
       }
