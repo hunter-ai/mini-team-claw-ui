@@ -1,28 +1,31 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { chatRunManager } from "@/lib/chat-run-manager";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { abortOpenClawSession } from "@/lib/openclaw/chat";
 import { getChatSessionForUser } from "@/lib/session-service";
 
 export async function POST(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const { sessionId } = await params;
   const session = await getChatSessionForUser(user.id, sessionId);
 
   if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
   try {
     await abortOpenClawSession(session.agentId, session.openclawSessionId);
     if (session.runs[0]) {
-      await chatRunManager.markAborted(session.runs[0].id);
+      await chatRunManager.markAborted(session.runs[0].id, messages.chat.abortedByUser);
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -40,6 +43,6 @@ export async function POST(
             }
           : { message: String(error) },
     });
-    return NextResponse.json({ error: "Abort failed" }, { status: 502 });
+    return NextResponse.json({ error: messages.sessions.abortFailed }, { status: 502 });
   }
 }

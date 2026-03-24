@@ -138,13 +138,16 @@ export async function listChatSessions(userId: string, options: ListChatSessions
   };
 }
 
-export async function createChatSession(user: Pick<User, "id" | "openclawAgentId">) {
+export async function createChatSession(
+  user: Pick<User, "id" | "openclawAgentId">,
+  title = "New session",
+) {
   return prisma.chatSession.create({
     data: {
       userId: user.id,
       agentId: user.openclawAgentId,
       openclawSessionId: `mtc_${user.id}_${randomUUID()}`,
-      title: "New session",
+      title,
     },
   });
 }

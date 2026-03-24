@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { verify } from "@node-rs/argon2";
 import { type User, UserRole } from "@prisma/client";
 import { getEnv } from "@/lib/env";
+import type { Locale } from "@/lib/i18n/config";
+import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
 
 const COOKIE_NAME = "mtc_session";
@@ -112,6 +114,22 @@ export async function requireAdmin() {
   const user = await requireUser();
   if (user.role !== UserRole.ADMIN) {
     redirect("/chat");
+  }
+  return user;
+}
+
+export async function requireUserInLocale(locale: Locale) {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect(localizeHref(locale, "/login"));
+  }
+  return user;
+}
+
+export async function requireAdminInLocale(locale: Locale) {
+  const user = await requireUserInLocale(locale);
+  if (user.role !== UserRole.ADMIN) {
+    redirect(localizeHref(locale, "/chat"));
   }
   return user;
 }

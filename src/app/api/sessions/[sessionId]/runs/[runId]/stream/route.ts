@@ -1,6 +1,8 @@
 import { getCurrentUser } from "@/lib/auth";
 import { serializeChatRunEvent } from "@/lib/chat-run-events";
 import { chatRunManager } from "@/lib/chat-run-manager";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { getRequestLocale } from "@/lib/i18n/request-locale";
 import { getChatRunForUser, isTerminalChatRunStatus, listChatRunEventsAfter } from "@/lib/chat-run-service";
 
 export const runtime = "nodejs";
@@ -25,15 +27,16 @@ export async function GET(
     params: Promise<{ sessionId: string; runId: string }>;
   },
 ) {
+  const messages = await getDictionary(getRequestLocale(request));
   const user = await getCurrentUser();
   if (!user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
 
   const { sessionId, runId } = await params;
   const run = await getChatRunForUser(user.id, sessionId, runId);
   if (!run) {
-    return Response.json({ error: "Run not found" }, { status: 404 });
+    return Response.json({ error: messages.sessions.runNotFound }, { status: 404 });
   }
 
   const url = new URL(request.url);
@@ -183,7 +186,7 @@ export async function GET(
             type: "error",
             runId: run.id,
             seq: lastSeq,
-            error: error instanceof Error ? error.message : "Failed to poll chat run",
+            error: error instanceof Error ? error.message : messages.sessions.failedToStartRun,
           });
           close("poll-error");
         } finally {

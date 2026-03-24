@@ -3,6 +3,8 @@ import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { refreshGatewayPairingSummary } from "@/lib/openclaw/pairing";
 import { prisma } from "@/lib/prisma";
 
@@ -13,10 +15,11 @@ const createSchema = z.object({
   role: z.enum([UserRole.ADMIN, UserRole.MEMBER]).default(UserRole.MEMBER),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
   if (!user || user.role !== UserRole.ADMIN) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
@@ -33,13 +36,14 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const currentUser = await getCurrentUser();
   if (!currentUser || currentUser.role !== UserRole.ADMIN) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const payload = createSchema.safeParse(await request.json().catch(() => null));
   if (!payload.success) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
   }
 
   const existing = await prisma.user.findUnique({
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
   });
 
   if (existing) {
-    return NextResponse.json({ error: "Username already exists" }, { status: 409 });
+    return NextResponse.json({ error: messages.users.usernameExists }, { status: 409 });
   }
 
   const passwordHash = await hash(payload.data.password);
@@ -69,7 +73,7 @@ export async function POST(request: Request) {
 
   const pairing = await refreshGatewayPairingSummary().catch(() => ({
     status: "failed" as const,
-    message: "Member created, but pairing precheck failed.",
+    message: messages.pairing.memberCreatedPairingPrecheckFailed,
     deviceId: "",
     lastPairedAt: null,
     tokenScopes: [],

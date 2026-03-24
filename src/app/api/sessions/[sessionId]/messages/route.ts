@@ -5,6 +5,8 @@ import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { toChatMessageViews } from "@/lib/chat-presenter";
 import { serializeActiveRun, serializeSessionSummary } from "@/lib/chat-response";
 import { chatRunManager } from "@/lib/chat-run-manager";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import {
   ActiveChatRunConflictError,
   createChatRunForMessage,
@@ -46,16 +48,17 @@ export async function GET(
   _: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
+  const messages = await getDictionary(await resolveRequestLocale());
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
 
   const { sessionId } = await params;
   const session = await getChatSessionForUser(user.id, sessionId);
 
   if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
   return NextResponse.json({
@@ -70,28 +73,29 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
 
   const { sessionId } = await params;
   const payload = schema.safeParse(await request.json().catch(() => null));
 
   if (!payload.success) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
   }
 
   const messageText = payload.data.message.trim();
   const attachmentIds = [...new Set(payload.data.attachmentIds)];
 
   if (!messageText && attachmentIds.length === 0) {
-    return NextResponse.json({ error: "Message or attachment is required" }, { status: 400 });
+    return NextResponse.json({ error: messages.sessions.messageOrAttachmentRequired }, { status: 400 });
   }
 
   const session = await getChatSessionForUser(user.id, sessionId);
   if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
   const existingRun = await getChatRunByClientRequestId(
@@ -130,7 +134,7 @@ export async function POST(
     : [];
 
   if (attachmentRecords.length !== attachmentIds.length) {
-    return NextResponse.json({ error: "Some attachments are unavailable for this session" }, { status: 400 });
+    return NextResponse.json({ error: messages.sessions.attachmentsUnavailable }, { status: 400 });
   }
 
   const attachmentOrder = new Map(attachmentIds.map((attachmentId, index) => [attachmentId, index]));
@@ -150,7 +154,7 @@ export async function POST(
     });
 
     if (existingAttachmentUsage) {
-      return NextResponse.json({ error: "Some attachments were already sent" }, { status: 409 });
+      return NextResponse.json({ error: messages.sessions.attachmentsAlreadySent }, { status: 409 });
     }
   }
 
@@ -200,7 +204,7 @@ export async function POST(
 
     const updatedSession = await getChatSessionForUser(user.id, session.id);
     if (!updatedSession) {
-      return NextResponse.json({ error: "Session refresh failed" }, { status: 500 });
+      return NextResponse.json({ error: messages.sessions.sessionRefreshFailed }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -210,7 +214,7 @@ export async function POST(
     });
   } catch (error) {
     if (error instanceof ActiveChatRunConflictError) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
+      return NextResponse.json({ error: messages.sessions.activeResponseConflict }, { status: 409 });
     }
 
     console.error("[api/messages] failed to create run", {
@@ -226,6 +230,6 @@ export async function POST(
           : { message: String(error) },
     });
 
-    return NextResponse.json({ error: "Failed to start chat run" }, { status: 500 });
+    return NextResponse.json({ error: messages.sessions.failedToStartRun }, { status: 500 });
   }
 }

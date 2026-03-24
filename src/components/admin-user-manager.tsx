@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { t } from "@/lib/i18n/messages";
 
 type AdminUser = {
   id: string;
@@ -27,7 +30,15 @@ type GatewayPairingSummary = {
   }>;
 };
 
-export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }) {
+export function AdminUserManager({
+  initialUsers,
+  locale,
+  messages,
+}: {
+  initialUsers: AdminUser[];
+  locale: Locale;
+  messages: Dictionary;
+}) {
   const [users, setUsers] = useState(initialUsers);
   const [message, setMessage] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
@@ -43,7 +54,9 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
   const activeCount = useMemo(() => users.filter((user) => user.isActive).length, [users]);
 
   async function refreshUsers() {
-    const response = await fetch("/api/admin/users");
+    const response = await fetch("/api/admin/users", {
+      headers: { [LOCALE_HEADER_NAME]: locale },
+    });
     const payload = (await response.json()) as { users: AdminUser[] };
     setUsers(payload.users);
   }
@@ -55,7 +68,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
 
     const response = await fetch("/api/admin/users", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
       body: JSON.stringify(form),
     });
 
@@ -67,23 +80,23 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
     };
 
     if (!response.ok) {
-      setMessage(payload.error ?? "Failed to create user");
+      setMessage(payload.error ?? messages.admin.failedToCreateUser);
       return;
     }
 
     setForm({ username: "", password: "", openclawAgentId: "", role: "MEMBER" });
     if (payload.pairing) {
       if (payload.pairing.status === "healthy") {
-        setMessage("Member created. Device pairing is ready.");
+        setMessage(messages.admin.memberCreatedPairingReady);
       } else if (payload.pairing.status === "pairing_required") {
-        setMessage("Member created. Device pairing is still pending approval.");
+        setMessage(messages.admin.memberCreatedPairingPending);
       } else if (payload.pairing.status === "failed") {
-        setMessage("Member created. Device pairing precheck failed.");
+        setMessage(messages.admin.memberCreatedPairingFailed);
       } else {
-        setMessage("Member created. Device pairing is being processed.");
+        setMessage(messages.admin.memberCreatedPairingProcessing);
       }
     } else {
-      setMessage("Member created");
+      setMessage(messages.admin.memberCreated);
     }
     await refreshUsers();
   }
@@ -93,7 +106,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
     setActionUserId(user.id);
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
       body: JSON.stringify({
         isActive: !user.isActive,
       }),
@@ -103,18 +116,18 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setMessage(payload.error ?? "Failed to update member");
+      setMessage(payload.error ?? messages.admin.failedToUpdateMember);
       return;
     }
 
-    setMessage(user.isActive ? "Member disabled" : "Member enabled");
+    setMessage(user.isActive ? messages.admin.memberDisabled : messages.admin.memberEnabled);
     await refreshUsers();
   }
 
   async function resetPassword(user: AdminUser) {
     const password = passwordDrafts[user.id]?.trim() ?? "";
     if (password.length < 8) {
-      setMessage("New password must be at least 8 characters.");
+      setMessage(messages.admin.passwordTooShort);
       return;
     }
 
@@ -122,25 +135,25 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
     setActionUserId(user.id);
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
       body: JSON.stringify({ password }),
     });
     setActionUserId(null);
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setMessage(payload.error ?? "Failed to reset password");
+      setMessage(payload.error ?? messages.admin.failedToResetPassword);
       return;
     }
 
     setPasswordDrafts((current) => ({ ...current, [user.id]: "" }));
-    setMessage(`Password reset for ${user.username}. Existing sessions were signed out.`);
+    setMessage(t(messages.admin.passwordReset, { username: user.username }));
     await refreshUsers();
   }
 
   async function deleteUser(user: AdminUser) {
     if (user.isActive) {
-      setMessage("Only disabled users can be deleted.");
+      setMessage(messages.admin.onlyDisabledUsersCanBeDeleted);
       return;
     }
 
@@ -148,12 +161,13 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
     setActionUserId(user.id);
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "DELETE",
+      headers: { [LOCALE_HEADER_NAME]: locale },
     });
     setActionUserId(null);
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setMessage(payload.error ?? "Failed to delete user");
+      setMessage(payload.error ?? messages.admin.deleteUser);
       return;
     }
 
@@ -163,7 +177,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
       delete next[user.id];
       return next;
     });
-    setMessage(`Deleted ${user.username}.`);
+    setMessage(t(messages.admin.deletedUser, { username: user.username }));
   }
 
   return (
@@ -171,8 +185,8 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
       <section className="ui-card rounded-[2rem] p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">Members</p>
-            <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">{activeCount} active seats</h2>
+            <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">{messages.admin.members}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">{t(messages.admin.activeSeats, { count: activeCount })}</h2>
           </div>
         </div>
         <div className="mt-5 space-y-3">
@@ -182,7 +196,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                 <div>
                   <p className="font-medium text-[color:var(--text-primary)]">{user.username}</p>
                   <p className="text-sm text-[color:var(--text-tertiary)]">
-                    {user.openclawAgentId} · {user.role} · {user.isActive ? "Active" : "Disabled"}
+                    {user.openclawAgentId} · {user.role === "ADMIN" ? messages.admin.admin : messages.admin.member} · {user.isActive ? messages.admin.active : messages.admin.disabled}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -192,16 +206,16 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                     disabled={actionUserId === user.id}
                     className="ui-button-secondary rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed"
                   >
-                    {actionUserId === user.id ? "Saving..." : user.isActive ? "Disable" : "Enable"}
+                    {actionUserId === user.id ? messages.common.saving : user.isActive ? messages.admin.disable : messages.admin.enable}
                   </button>
                   <button
                     type="button"
                     onClick={() => deleteUser(user)}
                     disabled={user.isActive || actionUserId === user.id}
-                    title={user.isActive ? "Only disabled users can be deleted." : undefined}
+                    title={user.isActive ? messages.admin.onlyDisabledUsersCanBeDeleted : undefined}
                     className="ui-button-danger rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)]"
                   >
-                    Delete user
+                    {messages.admin.deleteUser}
                   </button>
                 </div>
               </div>
@@ -217,7 +231,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                     }))
                   }
                   className="ui-input min-w-0 flex-1 rounded-2xl px-4 py-3"
-                  placeholder="new password"
+                  placeholder={messages.admin.newPasswordPlaceholder}
                 />
                 <button
                   type="button"
@@ -225,11 +239,11 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                   disabled={actionUserId === user.id}
                   className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
                 >
-                  Force reset password
+                  {messages.admin.forceResetPassword}
                 </button>
               </div>
               {user.isActive ? (
-                <p className="mt-2 text-xs text-[color:var(--text-quaternary)]">Only disabled users can be deleted.</p>
+                <p className="mt-2 text-xs text-[color:var(--text-quaternary)]">{messages.admin.onlyDisabledUsersCanBeDeleted}</p>
               ) : null}
             </div>
           ))}
@@ -237,13 +251,13 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
       </section>
 
       <section className="ui-card rounded-[2rem] p-5">
-        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">Create member</p>
+        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">{messages.admin.createMember}</p>
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={createUser}>
           <input
             value={form.username}
             onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
             className="ui-input rounded-2xl px-4 py-3"
-            placeholder="username"
+            placeholder={messages.admin.usernamePlaceholder}
             required
           />
           <input
@@ -252,7 +266,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
               setForm((current) => ({ ...current, openclawAgentId: event.target.value }))
             }
             className="ui-input rounded-2xl px-4 py-3"
-            placeholder="agent id"
+            placeholder={messages.admin.agentIdPlaceholder}
             required
           />
           <input
@@ -260,7 +274,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
             value={form.password}
             onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
             className="ui-input rounded-2xl px-4 py-3"
-            placeholder="password"
+            placeholder={messages.admin.passwordPlaceholder}
             required
           />
           <select
@@ -268,15 +282,15 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
             onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
             className="ui-input rounded-2xl px-4 py-3"
           >
-            <option value="MEMBER">Member</option>
-            <option value="ADMIN">Admin</option>
+            <option value="MEMBER">{messages.admin.member}</option>
+            <option value="ADMIN">{messages.admin.admin}</option>
           </select>
           <button
             type="submit"
             disabled={createLoading}
             className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold"
           >
-            {createLoading ? "Creating..." : "Create member"}
+            {createLoading ? messages.admin.creatingMember : messages.admin.createMemberAction}
           </button>
         </form>
         {message ? <p className="mt-3 text-sm text-[color:var(--text-secondary)]">{message}</p> : null}

@@ -1,10 +1,12 @@
-export function formatRelativeDate(value: Date | string | null | undefined) {
+import type { Locale } from "@/lib/i18n/config";
+
+export function formatRelativeDate(value: Date | string | null | undefined, locale: Locale, emptyLabel: string) {
   if (!value) {
-    return "No activity yet";
+    return emptyLabel;
   }
 
   const date = typeof value === "string" ? new Date(value) : value;
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

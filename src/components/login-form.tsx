@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localizeHref } from "@/lib/i18n/routing";
 
-export function LoginForm() {
+export function LoginForm({ locale, messages }: { locale: Locale; messages: Dictionary }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -17,7 +20,7 @@ export function LoginForm() {
 
     const response = await fetch("/api/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
       body: JSON.stringify({ username, password }),
     });
 
@@ -25,11 +28,11 @@ export function LoginForm() {
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error ?? "Login failed");
+      setError(payload.error ?? messages.login.failed);
       return;
     }
 
-    router.push("/chat");
+    router.push(localizeHref(locale, "/chat"));
     router.refresh();
   }
 
@@ -37,21 +40,21 @@ export function LoginForm() {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
         <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="username">
-          Username
+          {messages.login.username}
         </label>
         <input
           id="username"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
-          placeholder="team member"
+          placeholder={messages.login.usernamePlaceholder}
           autoComplete="username"
           required
         />
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="password">
-          Password
+          {messages.login.password}
         </label>
         <input
           id="password"
@@ -59,7 +62,7 @@ export function LoginForm() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
-          placeholder="••••••••"
+          placeholder={messages.login.passwordPlaceholder}
           autoComplete="current-password"
           required
         />
@@ -70,7 +73,7 @@ export function LoginForm() {
         disabled={loading}
         className="ui-button-primary w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
       >
-        {loading ? "Signing in..." : "Sign in"}
+        {loading ? messages.login.submitting : messages.login.submit}
       </button>
     </form>
   );

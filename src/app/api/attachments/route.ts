@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
 import { getChatSessionForUser } from "@/lib/session-service";
 import { persistUpload } from "@/lib/upload";
@@ -7,25 +9,26 @@ import { persistUpload } from "@/lib/upload";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const formData = await request.formData();
   const file = formData.get("file");
   const sessionId = formData.get("sessionId");
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "File is required" }, { status: 400 });
+    return NextResponse.json({ error: messages.attachments.fileRequired }, { status: 400 });
   }
 
   if (!sessionId || typeof sessionId !== "string") {
-    return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
+    return NextResponse.json({ error: messages.attachments.sessionIdRequired }, { status: 400 });
   }
 
   const session = await getChatSessionForUser(user.id, sessionId);
   if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
   try {
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Upload failed",
+        error: error instanceof Error ? error.message : messages.attachments.uploadFailed,
       },
       { status: 400 },
     );

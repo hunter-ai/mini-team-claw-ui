@@ -3,6 +3,8 @@ import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
 
 const patchSchema = z.object({
@@ -33,14 +35,15 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const currentUser = await getCurrentUser();
   if (!currentUser || currentUser.role !== UserRole.ADMIN) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const { userId } = await params;
   const payload = patchSchema.safeParse(await request.json().catch(() => null));
   if (!payload.success) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
   }
 
   const existingUser = await prisma.user.findUnique({
@@ -53,7 +56,7 @@ export async function PATCH(
   });
 
   if (!existingUser) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.users.userNotFound }, { status: 404 });
   }
 
   const nextRole = payload.data.role ?? existingUser.role;
@@ -63,7 +66,7 @@ export async function PATCH(
     const activeAdminCount = await countActiveAdmins();
     if (activeAdminCount <= 1) {
       return NextResponse.json(
-        { error: "At least one active admin must remain." },
+        { error: messages.users.activeAdminMustRemain },
         { status: 409 },
       );
     }
@@ -107,9 +110,10 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  const messages = await getDictionary(await resolveRequestLocale(_request));
   const currentUser = await getCurrentUser();
   if (!currentUser || currentUser.role !== UserRole.ADMIN) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
 
   const { userId } = await params;
@@ -123,12 +127,12 @@ export async function DELETE(
   });
 
   if (!existingUser) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    return NextResponse.json({ error: messages.users.userNotFound }, { status: 404 });
   }
 
   if (existingUser.isActive) {
     return NextResponse.json(
-      { error: "Only disabled users can be deleted." },
+      { error: messages.users.onlyDisabledCanBeDeleted },
       { status: 409 },
     );
   }
@@ -137,7 +141,7 @@ export async function DELETE(
     const activeAdminCount = await countActiveAdmins();
     if (activeAdminCount <= 1) {
       return NextResponse.json(
-        { error: "At least one active admin must remain." },
+        { error: messages.users.activeAdminMustRemain },
         { status: 409 },
       );
     }

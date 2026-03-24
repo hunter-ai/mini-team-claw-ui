@@ -1,20 +1,25 @@
 import { ChatShell } from "@/components/chat-shell";
 import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { serializeSessionSummary } from "@/lib/chat-response";
+import { requireUserInLocale } from "@/lib/auth";
 import { toChatMessageViews } from "@/lib/chat-presenter";
-import { requireUser } from "@/lib/auth";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
 import {
   getChatSessionForUser,
   listChatSessions,
   SESSION_PAGE_SIZE,
 } from "@/lib/session-service";
 
-export default async function ChatPage({
+export async function ChatPage({
+  locale,
   searchParams,
 }: {
+  locale: Locale;
   searchParams: Promise<{ session?: string | string[] }>;
 }) {
-  const user = await requireUser();
+  const user = await requireUserInLocale(locale);
+  const messages = await getDictionary(locale);
   const query = await searchParams;
   const { sessions, pageInfo } = await listChatSessions(user.id, { limit: SESSION_PAGE_SIZE });
   const requestedSessionId =
@@ -31,6 +36,8 @@ export default async function ChatPage({
   return (
     <main className="h-[100dvh] w-full overflow-hidden p-1.5 sm:p-2">
       <ChatShell
+        locale={locale}
+        messages={messages}
         initialSessions={initialSessions.map(serializeSessionSummary)}
         initialHasMore={pageInfo.hasMore}
         initialNextCursor={pageInfo.nextCursor}

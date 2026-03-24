@@ -14,7 +14,12 @@ import type {
   ClientRunActivityEntry,
   ClientRunHistoryItem,
 } from "@/lib/chat-run-events";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { formatRelativeDate } from "@/lib/utils";
+import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { getLifecycleTitle, t } from "@/lib/i18n/messages";
+import { localizeHref } from "@/lib/i18n/routing";
 import { LogoutButton } from "@/components/logout-button";
 
 type Attachment = {
@@ -181,10 +186,6 @@ function parseSsePayload(input: string) {
 
 function truncateText(value: string, maxLength = 240) {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
-}
-
-function formatLifecycleTitle(entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>) {
-  return entry.title;
 }
 
 function getActivityEntryRenderKey(entry: ClientRunActivityEntry) {
@@ -514,7 +515,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       seq: payload.seq,
       createdAt: payload.createdAt,
       phase: "started",
-      title: "Run started",
+      title: "",
       detail: null,
     };
   }
@@ -527,7 +528,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       seq: payload.seq,
       createdAt: payload.createdAt,
       phase: "completed",
-      title: "Response completed",
+      title: "",
       detail: null,
     };
   }
@@ -540,7 +541,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       seq: payload.seq,
       createdAt: payload.createdAt,
       phase: "aborted",
-      title: "Run aborted",
+      title: "",
       detail: payload.reason,
     };
   }
@@ -553,7 +554,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       seq: payload.seq,
       createdAt: payload.createdAt,
       phase: "pairing_required",
-      title: "Pairing required",
+      title: "",
       detail: payload.pairing.message,
     };
   }
@@ -566,7 +567,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       seq: payload.seq,
       createdAt: payload.createdAt,
       phase: "failed",
-      title: "Run failed",
+      title: "",
       detail: payload.error,
     };
   }
@@ -576,9 +577,11 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
 
 function AssistantTextBlock({
   content,
+  messages,
   streaming = false,
 }: {
   content: string;
+  messages: Dictionary;
   streaming?: boolean;
 }) {
   if (!content.trim()) {
@@ -588,20 +591,22 @@ function AssistantTextBlock({
   return (
     <div className="whitespace-normal">
       <MessageBody content={content} isUser={false} />
-      {streaming ? <StreamingSpinner /> : null}
+      {streaming ? <StreamingSpinner messages={messages} /> : null}
     </div>
   );
 }
 
 function AssistantToolCard({
   entry,
+  messages,
   streaming = false,
 }: {
   entry: Extract<ClientRunActivityEntry, { kind: "tool" }>;
+  messages: Dictionary;
   streaming?: boolean;
 }) {
   const hasDetails = Boolean(entry.tool.outputPreview || entry.tool.raw);
-  const summary = entry.tool.summary ?? "Tool invocation";
+  const summary = entry.tool.summary ?? messages.chat.toolInvocation;
 
   return (
     <details
@@ -611,7 +616,7 @@ function AssistantToolCard({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-[color:var(--text-primary)]">{entry.tool.name}</span>
           <span className="text-[11px] text-[color:var(--text-tertiary)]">{summary}</span>
-          {streaming ? <StreamingSpinner /> : null}
+          {streaming ? <StreamingSpinner messages={messages} /> : null}
         </div>
       </summary>
       {hasDetails ? (
@@ -634,9 +639,11 @@ function AssistantToolCard({
 
 function AssistantLifecycleNote({
   entry,
+  messages,
   streaming = false,
 }: {
   entry: Extract<ClientRunActivityEntry, { kind: "lifecycle" }>;
+  messages: Dictionary;
   streaming?: boolean;
 }) {
   return (
@@ -645,8 +652,8 @@ function AssistantLifecycleNote({
         <span className="ui-badge rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
           {entry.phase.replace("_", " ")}
         </span>
-        <span className="text-xs font-medium text-[color:var(--text-primary)]">{formatLifecycleTitle(entry)}</span>
-        {streaming ? <StreamingSpinner /> : null}
+        <span className="text-xs font-medium text-[color:var(--text-primary)]">{getLifecycleTitle(messages, entry.phase)}</span>
+        {streaming ? <StreamingSpinner messages={messages} /> : null}
       </div>
       {entry.detail ? (
         <p className="mt-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">{truncateText(entry.detail, 260)}</p>
@@ -657,9 +664,11 @@ function AssistantLifecycleNote({
 
 function AttachmentBadge({
   attachment,
+  messages,
   tone = "composer",
 }: {
   attachment: Attachment;
+  messages: Dictionary;
   tone?: "composer" | "user-message" | "assistant-message";
 }) {
   const styles =
@@ -687,7 +696,7 @@ function AttachmentBadge({
     >
       <span className="max-w-full truncate font-semibold">{attachment.originalName}</span>
       <span className={`text-[0.92em] ${styles.meta}`}>
-        {attachment.mime || "unknown"} · {formatFileSize(attachment.size)}
+        {attachment.mime || messages.chat.unknown} · {formatFileSize(attachment.size)}
       </span>
     </span>
   );
@@ -715,10 +724,10 @@ function MessageBody({
   );
 }
 
-function StreamingSpinner() {
+function StreamingSpinner({ messages }: { messages: Dictionary }) {
   return (
     <span
-      aria-label="Streaming"
+      aria-label={messages.chat.streaming}
       className="ml-2 inline-block size-3 animate-spin rounded-full border-2 border-[rgba(17,24,39,0.18)] border-t-[color:var(--text-primary)] align-middle"
     />
   );
@@ -731,9 +740,13 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 const ChatMessageItem = memo(function ChatMessageItem({
   item,
   segmentation,
+  locale,
+  messages,
 }: {
   item: RenderableMessage;
   segmentation: RunContentSegmentation | null;
+  locale: Locale;
+  messages: Dictionary;
 }) {
   const isUser = item.kind === "message" && item.message.role === "USER";
   const run = item.run;
@@ -767,14 +780,14 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <div className="space-y-3">
             {assistantBlocks.map((block) => {
               if (block.kind === "markdown_text") {
-                return <AssistantTextBlock key={block.key} content={block.content} streaming={block.streaming} />;
+                return <AssistantTextBlock key={block.key} content={block.content} messages={messages} streaming={block.streaming ? true : false} />;
               }
 
               if (block.kind === "tool_step") {
-                return <AssistantToolCard key={block.key} entry={block.entry} streaming={block.streaming} />;
+                return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
               }
 
-              return <AssistantLifecycleNote key={block.key} entry={block.entry} streaming={block.streaming} />;
+              return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
             })}
           </div>
         )}
@@ -788,6 +801,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
               <AttachmentBadge
                 key={attachment.id}
                 attachment={attachment}
+                messages={messages}
                 tone={isUser ? "user-message" : "assistant-message"}
               />
             ))}
@@ -795,7 +809,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         ) : null}
       </div>
       <p className={`mt-1 text-[10px] ${isUser ? "text-[color:var(--text-tertiary)]" : "text-[color:var(--text-quaternary)]"}`}>
-        {formatRelativeDate(createdAt)}
+        {formatRelativeDate(createdAt, locale, messages.common.noActivityYet)}
       </p>
     </div>
   );
@@ -822,9 +836,13 @@ const ChatMessageItem = memo(function ChatMessageItem({
 const ActiveRunPanel = memo(function ActiveRunPanel({
   activeRun,
   activeRunBlocks,
+  locale,
+  messages,
 }: {
   activeRun: SessionRun;
   activeRunBlocks: AssistantRenderBlock[];
+  locale: Locale;
+  messages: Dictionary;
 }) {
   return (
     <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
@@ -832,28 +850,30 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
         <div className="space-y-3">
           {activeRunBlocks.map((block) => {
             if (block.kind === "markdown_text") {
-              return <AssistantTextBlock key={block.key} content={block.content} streaming={block.streaming} />;
+              return <AssistantTextBlock key={block.key} content={block.content} messages={messages} streaming={block.streaming} />;
             }
 
             if (block.kind === "tool_step") {
-              return <AssistantToolCard key={block.key} entry={block.entry} streaming={block.streaming} />;
+              return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
             }
 
-            return <AssistantLifecycleNote key={block.key} entry={block.entry} streaming={block.streaming} />;
+            return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
           })}
           {activeRunBlocks.length === 0 ? (
             <div className="flex items-center text-sm text-[color:var(--text-tertiary)]">
-              <StreamingSpinner />
+              <StreamingSpinner messages={messages} />
             </div>
           ) : null}
         </div>
       </div>
-      <p className="mt-1 text-[10px] text-[color:var(--text-quaternary)]">{formatRelativeDate(activeRun.updatedAt)}</p>
+      <p className="mt-1 text-[10px] text-[color:var(--text-quaternary)]">{formatRelativeDate(activeRun.updatedAt, locale, messages.common.noActivityYet)}</p>
     </div>
   );
 });
 
 const ChatSidebar = memo(function ChatSidebar({
+  locale,
+  messages,
   drawerOpen,
   isSidebarCollapsed,
   user,
@@ -871,6 +891,8 @@ const ChatSidebar = memo(function ChatSidebar({
   onOpenRenameModal,
   onLoadMoreSessions,
 }: {
+  locale: Locale;
+  messages: Dictionary;
   drawerOpen: boolean;
   isSidebarCollapsed: boolean;
   user: UserShape;
@@ -901,8 +923,8 @@ const ChatSidebar = memo(function ChatSidebar({
               type="button"
               onClick={onExpandSidebar}
               className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full text-xs"
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
+              aria-label={messages.nav.expandSidebar}
+              title={messages.nav.expandSidebar}
             >
               <SidebarToggleIcon collapsed />
             </button>
@@ -919,8 +941,8 @@ const ChatSidebar = memo(function ChatSidebar({
                   type="button"
                   onClick={onCollapseSidebar}
                   className="ui-button-secondary hidden size-8 items-center justify-center rounded-full text-xs lg:inline-flex"
-                  aria-label="Collapse sidebar"
-                  title="Collapse sidebar"
+                  aria-label={messages.nav.collapseSidebar}
+                  title={messages.nav.collapseSidebar}
                 >
                   <SidebarToggleIcon collapsed={false} />
                 </button>
@@ -929,7 +951,7 @@ const ChatSidebar = memo(function ChatSidebar({
                   onClick={onCloseDrawer}
                   className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
                 >
-                  Close
+                  {messages.common.close}
                 </button>
               </div>
             </div>
@@ -939,7 +961,7 @@ const ChatSidebar = memo(function ChatSidebar({
                 onClick={onCreateSession}
                 className="ui-button-primary min-w-0 flex-1 rounded-[0.7rem] px-2.5 py-1.5 text-[11px] font-semibold"
               >
-                New
+                {messages.nav.new}
               </button>
             </div>
           </>
@@ -977,7 +999,7 @@ const ChatSidebar = memo(function ChatSidebar({
                   <p className="truncate text-xs font-medium text-[color:var(--text-primary)]">{session.title}</p>
                   {isBusy ? (
                     <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
-                      Live
+                      {messages.chat.live}
                     </span>
                   ) : null}
                 </div>
@@ -988,17 +1010,17 @@ const ChatSidebar = memo(function ChatSidebar({
           {isSidebarCollapsed ? null : (
             <div className="px-1 py-1 text-center text-[10px] text-[color:var(--text-quaternary)]">
               {loadingMore ? (
-                <span>Loading…</span>
+                <span>{messages.chat.loadingMore}</span>
               ) : loadMoreError ? (
                 <button
                   type="button"
                   onClick={onLoadMoreSessions}
                   className="text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
                 >
-                  Retry loading
+                  {messages.chat.retryLoading}
                 </button>
               ) : hasMore ? null : sidebarSessions.length ? (
-                <span>No more sessions</span>
+                <span>{messages.chat.noMoreSessions}</span>
               ) : null}
             </div>
           )}
@@ -1010,15 +1032,17 @@ const ChatSidebar = memo(function ChatSidebar({
           <div className="grid grid-cols-2 gap-1.5">
             {user.role === "ADMIN" ? (
               <Link
-                href="/admin"
+                href={localizeHref(locale, "/admin")}
                 className="ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium"
               >
-                Admin
+                {messages.nav.admin}
               </Link>
             ) : (
               <span className="hidden" aria-hidden="true" />
             )}
             <LogoutButton
+              locale={locale}
+              messages={messages}
               className={`ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium ${
                 user.role === "ADMIN" ? "" : "col-span-2"
               }`}
@@ -1031,6 +1055,8 @@ const ChatSidebar = memo(function ChatSidebar({
 });
 
 export function ChatShell({
+  locale,
+  messages,
   initialSessions,
   initialHasMore,
   initialNextCursor,
@@ -1040,6 +1066,8 @@ export function ChatShell({
   initialActiveRun,
   user,
 }: {
+  locale: Locale;
+  messages: Dictionary;
   initialSessions: Session[];
   initialHasMore: boolean;
   initialNextCursor: string | null;
@@ -1051,6 +1079,17 @@ export function ChatShell({
 }) {
   const pageSize = 30;
   const pathname = usePathname();
+  const localeFetch = useCallback(
+    (input: string, init?: RequestInit) =>
+      fetch(input, {
+        ...init,
+        headers: {
+          ...(init?.headers ?? {}),
+          [LOCALE_HEADER_NAME]: locale,
+        },
+      }),
+    [locale],
+  );
   const [sessions, setSessions] = useState(initialSessions);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
@@ -1117,7 +1156,7 @@ export function ChatShell({
     () => sessions.find((session) => session.id === renameSessionId) ?? null,
     [renameSessionId, sessions],
   );
-  const messages = useMemo(
+  const sessionMessages = useMemo(
     () => (activeSessionId ? messagesBySession[activeSessionId] ?? [] : []),
     [activeSessionId, messagesBySession],
   );
@@ -1190,7 +1229,7 @@ export function ChatShell({
     }
 
     const next: RenderableMessage[] = [];
-    for (const message of messages) {
+    for (const message of sessionMessages) {
       next.push({
         kind: "message",
         id: message.id,
@@ -1210,7 +1249,7 @@ export function ChatShell({
     }
 
     return next;
-  }, [activeStreamingRunId, messages, runHistory]);
+  }, [activeStreamingRunId, runHistory, sessionMessages]);
   const sidebarSessions = useMemo(
     () =>
       sessions.map((session) => ({
@@ -1462,7 +1501,7 @@ export function ChatShell({
       activeSessionId: activeSessionIdRef.current,
     });
     const source = new EventSource(
-      `/api/sessions/${sessionId}/runs/${run.id}/stream?afterSeq=${encodeURIComponent(String(afterSeq))}`,
+      `/api/sessions/${sessionId}/runs/${run.id}/stream?afterSeq=${encodeURIComponent(String(afterSeq))}&locale=${encodeURIComponent(locale)}`,
     );
 
     eventSourcesRef.current[run.id] = source;
@@ -1631,7 +1670,7 @@ export function ChatShell({
         setSessionRunState(sessionId, "failed");
         setErrorBySession((current) => ({
           ...current,
-          [sessionId]: "Connection to the active response was lost. Refresh this session to recover.",
+          [sessionId]: messages.chat.connectionLost,
         }));
         return;
       }
@@ -1650,6 +1689,8 @@ export function ChatShell({
   }, [
     captureRunSegmentation,
     flushBufferedRunPatch,
+    locale,
+    messages.chat.connectionLost,
     patchRunHistory,
     scheduleBufferedRunPatchFlush,
     setSessionRunState,
@@ -1667,12 +1708,12 @@ export function ChatShell({
       setErrorBySession((current) => ({ ...current, [sessionId]: null }));
     }
 
-    const response = await fetch(`/api/sessions/${sessionId}/messages`, {
+    const response = await localeFetch(`/api/sessions/${sessionId}/messages`, {
       cache: "no-store",
     });
 
     if (!response.ok) {
-      setErrorBySession((current) => ({ ...current, [sessionId]: "Failed to load session" }));
+      setErrorBySession((current) => ({ ...current, [sessionId]: messages.chat.failedToLoadSession }));
       return;
     }
 
@@ -1715,7 +1756,7 @@ export function ChatShell({
     if (["STARTING", "STREAMING"].includes(payload.activeRun.status)) {
       subscribeToRun(sessionId, payload.activeRun);
     }
-  }, [replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
+  }, [localeFetch, messages.chat.failedToLoadSession, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -1743,13 +1784,13 @@ export function ChatShell({
     setLoadMoreError(null);
 
     try {
-      const response = await fetch(
+      const response = await localeFetch(
         `/api/sessions?limit=${pageSize}&cursor=${encodeURIComponent(nextCursor)}`,
         { cache: "no-store" },
       );
 
       if (!response.ok) {
-        throw new Error("Failed to load more sessions");
+        throw new Error(messages.chat.failedToLoadMoreSessions);
       }
 
       const payload = (await response.json()) as {
@@ -1765,11 +1806,11 @@ export function ChatShell({
       setHasMore(payload.pageInfo.hasMore);
       setNextCursor(payload.pageInfo.nextCursor);
     } catch (loadError) {
-      setLoadMoreError(loadError instanceof Error ? loadError.message : "Failed to load more sessions");
+      setLoadMoreError(loadError instanceof Error ? loadError.message : messages.chat.failedToLoadMoreSessions);
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, nextCursor, pageSize]);
+  }, [hasMore, loadingMore, localeFetch, messages.chat.failedToLoadMoreSessions, nextCursor, pageSize]);
 
   useEffect(() => {
     const root = sessionsScrollerRef.current;
@@ -1904,10 +1945,10 @@ export function ChatShell({
       [activeSessionId ?? ""]: null,
     }));
 
-    const response = await fetch("/api/sessions", { method: "POST" });
+    const response = await localeFetch("/api/sessions", { method: "POST" });
     if (!response.ok) {
       if (activeSessionId) {
-        setErrorBySession((current) => ({ ...current, [activeSessionId]: "Failed to create session" }));
+        setErrorBySession((current) => ({ ...current, [activeSessionId]: messages.chat.failedToCreateSession }));
       }
       return;
     }
@@ -1932,7 +1973,7 @@ export function ChatShell({
     shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
     syncSessionUrl(payload.session.id);
-  }, [activeSessionId, syncSessionUrl, updateActiveRun, updateSessionSummary, setDrawerOpen, setSessionRunState]);
+  }, [activeSessionId, localeFetch, messages.chat.failedToCreateSession, syncSessionUrl, updateActiveRun, updateSessionSummary, setDrawerOpen, setSessionRunState]);
 
   const openRenameModal = useCallback((session: Session) => {
     if (isSidebarCollapsed) {
@@ -1964,14 +2005,14 @@ export function ChatShell({
 
     const normalizedTitle = renameTitle.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!normalizedTitle) {
-      setRenameError("Title is required.");
+      setRenameError(messages.chat.titleRequired);
       return;
     }
 
     setRenameSubmitting(true);
     setRenameError(null);
 
-    const response = await fetch(`/api/sessions/${renameTargetSession.id}`, {
+    const response = await localeFetch(`/api/sessions/${renameTargetSession.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: normalizedTitle }),
@@ -1985,7 +2026,7 @@ export function ChatShell({
 
     const rawText = await response.text();
     if (!response.ok) {
-      let errorMessage = "Failed to rename session";
+      let errorMessage: string = messages.chat.failedToRenameSession;
 
       if (rawText) {
         try {
@@ -2023,7 +2064,7 @@ export function ChatShell({
       formData.append("file", file);
       formData.append("sessionId", activeSessionId);
 
-      const response = await fetch("/api/attachments", {
+      const response = await localeFetch("/api/attachments", {
         method: "POST",
         body: formData,
       });
@@ -2032,7 +2073,7 @@ export function ChatShell({
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
         setErrorBySession((current) => ({
           ...current,
-          [activeSessionId]: payload.error ?? `Upload failed for ${file.name}`,
+          [activeSessionId]: payload.error ?? t(messages.chat.uploadFailedForFile, { fileName: file.name }),
         }));
         continue;
       }
@@ -2107,7 +2148,7 @@ export function ChatShell({
     shouldStickMessagesToBottomRef.current = true;
     setShowScrollToBottom(false);
 
-    const response = await fetch(`/api/sessions/${targetSessionId}/messages`, {
+    const response = await localeFetch(`/api/sessions/${targetSessionId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2133,7 +2174,7 @@ export function ChatShell({
 
     const rawText = await response.text();
     if (!response.ok) {
-      let errorMessage = "Failed to send";
+      let errorMessage: string = messages.chat.failedToSend;
       if (rawText) {
         try {
           const payload = JSON.parse(rawText) as { error?: string };
@@ -2209,9 +2250,9 @@ export function ChatShell({
 
     shouldStickMessagesToBottomRef.current = false;
     setShowScrollToBottom(false);
-    await fetch(`/api/sessions/${activeSessionId}/abort`, { method: "POST" });
+    await localeFetch(`/api/sessions/${activeSessionId}/abort`, { method: "POST" });
     setSessionRunState(activeSessionId, "aborted");
-  }, [activeSessionId, setSessionRunState]);
+  }, [activeSessionId, localeFetch, setSessionRunState]);
 
   const handleMessagesScroll = useCallback(() => {
     if (isProgrammaticMessagesScrollRef.current || !loading) {
@@ -2268,13 +2309,15 @@ export function ChatShell({
       {drawerOpen ? (
         <button
           type="button"
-          aria-label="Close sessions drawer"
+          aria-label={messages.nav.closeDrawer}
           onClick={() => setDrawerOpen(false)}
           className="ui-overlay fixed inset-0 z-20 lg:hidden"
         />
       ) : null}
 
       <ChatSidebar
+        locale={locale}
+        messages={messages}
         drawerOpen={drawerOpen}
         isSidebarCollapsed={isSidebarCollapsed}
         user={user}
@@ -2294,7 +2337,7 @@ export function ChatShell({
       />
 
       <section
-        aria-label={`Chat workspace for ${user.openclawAgentId}`}
+        aria-label={t(messages.nav.chatWorkspace, { agentId: user.openclawAgentId })}
         className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.74)] shadow-[var(--shadow-panel)]"
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--border-subtle)] px-2 py-1.5">
@@ -2304,20 +2347,21 @@ export function ChatShell({
               onClick={handleOpenDrawer}
               className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
             >
-              Sessions
+              {messages.nav.sessions}
             </button>
             <h2 className="truncate text-xs font-semibold text-[color:var(--text-primary)] sm:text-sm">
-              {activeSession?.title ?? "Create a session"}
+              {activeSession?.title ?? messages.nav.createSession}
             </h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <LanguageSwitcher locale={locale} messages={messages} />
             {loading ? (
               <button
                 type="button"
                 onClick={abortSession}
                 className="ui-button-danger rounded-full px-2.5 py-1.5 text-xs font-medium"
               >
-                Abort
+                {messages.chat.abort}
               </button>
             ) : null}
           </div>
@@ -2331,9 +2375,9 @@ export function ChatShell({
           <div className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
             {pairing ? (
               <div className="max-w-[96ch] rounded-[0.9rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
-                <p className="text-xs font-semibold">当前设备尚未完成绑定</p>
+                <p className="text-xs font-semibold">{messages.chat.pairingTitle}</p>
                 <p className="mt-1.5 text-xs text-[color:var(--text-secondary)]">
-                  请联系管理员进行设备绑定，完成后即可继续使用。
+                  {messages.chat.pairingDescription}
                 </p>
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   <button
@@ -2346,20 +2390,20 @@ export function ChatShell({
                     }}
                     className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium"
                   >
-                    Retry connection
+                    {messages.chat.retryConnection}
                   </button>
                 </div>
               </div>
             ) : null}
 
-            {messages.length === 0 && !activeRun ? (
+            {sessionMessages.length === 0 && !activeRun ? (
               <div className="flex min-h-full flex-1 items-center justify-center py-4">
                 <button
                   type="button"
                   onClick={createSession}
                   className="ui-button-secondary rounded-full px-4 py-2 text-xs"
                 >
-                  New session
+                  {messages.nav.newSession}
                 </button>
               </div>
             ) : null}
@@ -2368,12 +2412,14 @@ export function ChatShell({
               <ChatMessageItem
                 key={item.id}
                 item={item}
+                locale={locale}
+                messages={messages}
                 segmentation={item.run ? contentSegmentsByRunId[item.run.runId] ?? null : null}
               />
             ))}
 
             {activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? (
-              <ActiveRunPanel activeRun={activeRun} activeRunBlocks={activeRunBlocks} />
+              <ActiveRunPanel activeRun={activeRun} activeRunBlocks={activeRunBlocks} locale={locale} messages={messages} />
             ) : null}
           </div>
         </div>
@@ -2386,7 +2432,7 @@ export function ChatShell({
               className="ui-button-primary pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium shadow-[var(--shadow-float)]"
             >
               <span aria-hidden="true" className="text-xs leading-none">↓</span>
-              <span>{loading ? "New messages" : "Back to bottom"}</span>
+              <span>{loading ? messages.chat.newMessages : messages.chat.backToBottom}</span>
             </button>
           </div>
         ) : null}
@@ -2397,7 +2443,7 @@ export function ChatShell({
               {pendingAttachments.length ? (
                 <div className="mb-1.5 flex flex-wrap gap-1">
                   {pendingAttachments.map((attachment) => (
-                    <AttachmentBadge key={attachment.id} attachment={attachment} tone="composer" />
+                    <AttachmentBadge key={attachment.id} attachment={attachment} messages={messages} tone="composer" />
                   ))}
                 </div>
               ) : null}
@@ -2414,7 +2460,7 @@ export function ChatShell({
                   }}
                   onKeyDown={handleComposerKeyDown}
                   rows={2}
-                  placeholder="Message the agent..."
+                  placeholder={messages.chat.messagePlaceholder}
                   className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
                   disabled={!activeSessionId || loading}
                 />
@@ -2431,7 +2477,7 @@ export function ChatShell({
                           event.target.value = "";
                         }}
                       />
-                      {uploading ? "Uploading..." : "Attach"}
+                      {uploading ? messages.chat.uploading : messages.chat.attach}
                     </label>
                   </div>
                   <button
@@ -2444,7 +2490,7 @@ export function ChatShell({
                     }
                     className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
                   >
-                    {loading ? "Sending..." : "Send"}
+                    {loading ? messages.chat.sending : messages.chat.send}
                   </button>
                 </div>
               </form>
@@ -2458,19 +2504,19 @@ export function ChatShell({
         <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
           <button
             type="button"
-            aria-label="Close rename modal"
+            aria-label={messages.nav.closeRenameModal}
             onClick={closeRenameModal}
             className="absolute inset-0"
           />
           <div className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4">
             <div className="mb-4">
-              <p className="text-sm font-semibold text-[color:var(--text-primary)]">Rename session</p>
-              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Update how this session appears in the sidebar.</p>
+              <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.chat.renameSession}</p>
+              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.renameDescription}</p>
             </div>
 
             <form onSubmit={submitRenameSession}>
               <label className="block">
-                <span className="sr-only">Session title</span>
+                <span className="sr-only">{messages.chat.sessionTitle}</span>
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -2490,7 +2536,7 @@ export function ChatShell({
                     }
                   }}
                   className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
-                  placeholder="Session title"
+                  placeholder={messages.chat.sessionTitlePlaceholder}
                 />
               </label>
 
@@ -2503,14 +2549,14 @@ export function ChatShell({
                   disabled={renameSubmitting}
                   className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {messages.common.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={renameSubmitting}
                   className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
                 >
-                  {renameSubmitting ? "Saving..." : "Save"}
+                  {renameSubmitting ? messages.common.saving : messages.common.save}
                 </button>
               </div>
             </form>
