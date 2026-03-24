@@ -737,6 +737,63 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   return <span aria-hidden="true" className="text-sm leading-none">{collapsed ? "»" : "«"}</span>;
 }
 
+function ChatBubbleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      <path
+        d="M6.25 15.625 3.75 17.5v-3.125A5.625 5.625 0 0 1 2.5 10.625C2.5 7.519 5.578 5 9.375 5h1.25c3.797 0 6.875 2.52 6.875 5.625s-3.078 5.625-6.875 5.625H6.25Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M7.5 10.625h5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      <path
+        d="M5 5 15 15M15 5 5 15"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.75"
+      />
+    </svg>
+  );
+}
+
+function StopSquareIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      <rect
+        x="5.25"
+        y="5.25"
+        width="9.5"
+        height="9.5"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <rect
+        x="7"
+        y="7"
+        width="6"
+        height="6"
+        rx="1"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 const ChatMessageItem = memo(function ChatMessageItem({
   item,
   segmentation,
@@ -949,9 +1006,11 @@ const ChatSidebar = memo(function ChatSidebar({
                 <button
                   type="button"
                   onClick={onCloseDrawer}
-                  className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
+                  className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full lg:hidden"
+                  aria-label={messages.nav.closeDrawer}
+                  title={messages.nav.closeDrawer}
                 >
-                  {messages.common.close}
+                  <CloseIcon />
                 </button>
               </div>
             </div>
@@ -2345,9 +2404,11 @@ export function ChatShell({
             <button
               type="button"
               onClick={handleOpenDrawer}
-              className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
+              className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full lg:hidden"
+              aria-label={messages.nav.openDrawer}
+              title={messages.nav.openDrawer}
             >
-              {messages.nav.sessions}
+              <ChatBubbleIcon />
             </button>
             <h2 className="truncate text-xs font-semibold text-[color:var(--text-primary)] sm:text-sm">
               {activeSession?.title ?? messages.nav.createSession}
@@ -2355,15 +2416,6 @@ export function ChatShell({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <LanguageSwitcher locale={locale} messages={messages} />
-            {loading ? (
-              <button
-                type="button"
-                onClick={abortSession}
-                className="ui-button-danger rounded-full px-2.5 py-1.5 text-xs font-medium"
-              >
-                {messages.chat.abort}
-              </button>
-            ) : null}
           </div>
         </div>
 
@@ -2480,18 +2532,31 @@ export function ChatShell({
                       {uploading ? messages.chat.uploading : messages.chat.attach}
                     </label>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={
-                      !activeSessionId ||
-                      loading ||
-                      uploading ||
-                      (!text.trim() && pendingAttachments.length === 0)
-                    }
-                    className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
-                  >
-                    {loading ? messages.chat.sending : messages.chat.send}
-                  </button>
+                  {loading ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void abortSession();
+                      }}
+                      className="ui-button-danger inline-flex size-8 shrink-0 items-center justify-center rounded-full sm:size-9"
+                      aria-label={messages.chat.abort}
+                      title={messages.chat.abort}
+                    >
+                      <StopSquareIcon />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={
+                        !activeSessionId ||
+                        uploading ||
+                        (!text.trim() && pendingAttachments.length === 0)
+                      }
+                      className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                    >
+                      {messages.chat.send}
+                    </button>
+                  )}
                 </div>
               </form>
               {error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
