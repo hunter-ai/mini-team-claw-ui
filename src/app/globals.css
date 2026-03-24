@@ -1,9 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --background: #120f0d;
-  --foreground: #f5efe8;
-  --panel: rgba(255, 255, 255, 0.05);
+  --background: #f3f4f6;
+  --foreground: #111827;
+  --surface-page: #f3f4f6;
+  --surface-panel: rgba(255, 255, 255, 0.92);
+  --surface-panel-strong: #ffffff;
+  --surface-subtle: #f8fafc;
+  --surface-muted: #f3f4f6;
+  --surface-inset: #e5e7eb;
+  --surface-contrast: #111827;
+  --surface-contrast-hover: #1f2937;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --border-contrast: rgba(255, 255, 255, 0.14);
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --text-quaternary: #9ca3af;
+  --text-inverse: #f9fafb;
+  --overlay: rgba(17, 24, 39, 0.38);
+  --shadow-soft: 0 18px 50px rgba(15, 23, 42, 0.08);
+  --shadow-panel: 0 24px 70px rgba(15, 23, 42, 0.1);
+  --shadow-float: 0 18px 45px rgba(15, 23, 42, 0.16);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --danger-border: rgba(220, 38, 38, 0.18);
 }
 
 @theme inline {
@@ -16,14 +39,13 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(251, 191, 36, 0.26) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(107, 114, 128, 0.42) rgba(229, 231, 235, 0.72);
 }
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(251, 146, 60, 0.16), transparent 32%),
-    linear-gradient(180deg, #120f0d 0%, #17110f 48%, #0f0d0c 100%);
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.72), transparent 26%),
+    linear-gradient(180deg, #f8fafc 0%, #f3f4f6 44%, #eef2f7 100%);
   color: var(--foreground);
 }
 
@@ -31,6 +53,7 @@ body {
   min-height: 100vh;
   color: var(--foreground);
   font-family: var(--font-sans);
+  background: transparent;
 }
 
 *::-webkit-scrollbar {
@@ -39,18 +62,18 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(229, 231, 235, 0.72);
 }
 
 *::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(251, 191, 36, 0.42), rgba(251, 146, 60, 0.3));
+  background: linear-gradient(180deg, rgba(107, 114, 128, 0.42), rgba(156, 163, 175, 0.6));
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(251, 191, 36, 0.58), rgba(251, 146, 60, 0.42));
+  background: linear-gradient(180deg, rgba(75, 85, 99, 0.5), rgba(107, 114, 128, 0.66));
   background-clip: padding-box;
 }
 
@@ -68,6 +91,115 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+button,
+input,
+textarea,
+select,
+a {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.ui-card {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.ui-card-strong {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-panel-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.ui-surface-muted {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+}
+
+.ui-input {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-panel-strong);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-inset);
+}
+
+.ui-input::placeholder {
+  color: var(--text-quaternary);
+}
+
+.ui-input:focus {
+  border-color: rgba(17, 24, 39, 0.24);
+  outline: none;
+  box-shadow:
+    var(--shadow-inset),
+    0 0 0 3px rgba(17, 24, 39, 0.06);
+}
+
+.ui-button-primary {
+  border: 1px solid rgba(17, 24, 39, 0.04);
+  background: var(--surface-contrast);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-soft);
+}
+
+.ui-button-primary:hover {
+  background: var(--surface-contrast-hover);
+}
+
+.ui-button-primary:disabled {
+  background: #d1d5db;
+  color: rgba(17, 24, 39, 0.52);
+  box-shadow: none;
+}
+
+.ui-button-secondary {
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+}
+
+.ui-button-secondary:hover {
+  border-color: rgba(15, 23, 42, 0.22);
+  background: var(--surface-panel-strong);
+  color: var(--text-primary);
+}
+
+.ui-button-secondary:disabled {
+  opacity: 0.6;
+}
+
+.ui-button-danger {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ui-button-danger:hover {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: #fee2e2;
+}
+
+.ui-badge {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.ui-badge-strong {
+  border: 1px solid var(--border-strong);
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--text-primary);
+}
+
+.ui-overlay {
+  background: var(--overlay);
 }
 
 .markdown-body > *:first-child {
@@ -101,14 +233,14 @@ select {
 }
 
 .markdown-body a {
-  color: #fbbf24;
+  color: var(--text-primary);
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
 
 .markdown-body code {
   border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.06);
   padding: 0.12rem 0.35rem;
   font-family: var(--font-mono);
   font-size: 0.92em;
@@ -117,14 +249,15 @@ select {
 .markdown-body pre {
   overflow-x: auto;
   border-radius: 1rem;
-  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid var(--border-subtle);
+  background: #f8fafc;
   padding: 1rem;
 }
 
 .markdown-body pre,
 .markdown-body table {
   scrollbar-width: thin;
-  scrollbar-color: rgba(251, 191, 36, 0.35) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(107, 114, 128, 0.35) rgba(229, 231, 235, 0.72);
 }
 
 .markdown-body pre code {
@@ -133,9 +266,9 @@ select {
 }
 
 .markdown-body blockquote {
-  border-left: 3px solid rgba(251, 191, 36, 0.7);
+  border-left: 3px solid rgba(15, 23, 42, 0.18);
   padding-left: 1rem;
-  color: #d6d3d1;
+  color: var(--text-secondary);
 }
 
 .markdown-body table {
@@ -149,11 +282,11 @@ select {
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
   padding: 0.6rem 0.75rem;
   text-align: left;
 }
 
 .markdown-body th {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-muted);
 }

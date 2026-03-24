@@ -605,24 +605,24 @@ function AssistantToolCard({
 
   return (
     <details
-      className="rounded-[0.75rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-3 py-2"
+      className="rounded-[0.75rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2"
     >
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-stone-100">{entry.tool.name}</span>
-          <span className="text-[11px] text-stone-400">{summary}</span>
+          <span className="text-xs font-semibold text-[color:var(--text-primary)]">{entry.tool.name}</span>
+          <span className="text-[11px] text-[color:var(--text-tertiary)]">{summary}</span>
           {streaming ? <StreamingSpinner /> : null}
         </div>
       </summary>
       {hasDetails ? (
-        <div className="mt-2 space-y-2 border-t border-white/8 pt-2">
+        <div className="mt-2 space-y-2 border-t border-[color:var(--border-subtle)] pt-2">
           {entry.tool.outputPreview ? (
-            <p className="whitespace-pre-wrap text-[11px] leading-5 text-stone-300">
+            <p className="whitespace-pre-wrap text-[11px] leading-5 text-[color:var(--text-secondary)]">
               {entry.tool.outputPreview}
             </p>
           ) : null}
           {entry.tool.raw ? (
-            <pre className="overflow-x-auto rounded-[0.65rem] border border-white/8 bg-black/25 px-2.5 py-2 text-[10px] leading-5 text-stone-400">
+            <pre className="overflow-x-auto rounded-[0.65rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-2.5 py-2 text-[10px] leading-5 text-[color:var(--text-tertiary)]">
               {JSON.stringify(entry.tool.raw, null, 2)}
             </pre>
           ) : null}
@@ -640,16 +640,16 @@ function AssistantLifecycleNote({
   streaming?: boolean;
 }) {
   return (
-    <div className="rounded-[0.75rem] border border-white/8 bg-white/[0.02] px-3 py-2">
+    <div className="rounded-[0.75rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-stone-400">
+        <span className="ui-badge rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
           {entry.phase.replace("_", " ")}
         </span>
-        <span className="text-xs font-medium text-stone-100">{formatLifecycleTitle(entry)}</span>
+        <span className="text-xs font-medium text-[color:var(--text-primary)]">{formatLifecycleTitle(entry)}</span>
         {streaming ? <StreamingSpinner /> : null}
       </div>
       {entry.detail ? (
-        <p className="mt-1 text-[11px] leading-5 text-stone-400">{truncateText(entry.detail, 260)}</p>
+        <p className="mt-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">{truncateText(entry.detail, 260)}</p>
       ) : null}
     </div>
   );
@@ -664,22 +664,22 @@ function AttachmentBadge({
 }) {
   const styles =
     tone === "user-message"
-      ? {
-          outer:
-            "border-stone-950/14 bg-[linear-gradient(180deg,rgba(255,248,235,0.94),rgba(247,233,205,0.88))] text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]",
-          meta: "text-stone-700/80",
+        ? {
+            outer:
+              "border-[rgba(17,24,39,0.14)] bg-[#f3f4f6] text-[color:var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]",
+          meta: "text-[color:var(--text-tertiary)]",
         }
       : tone === "assistant-message"
         ? {
             outer:
-              "border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] text-stone-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
-            meta: "text-stone-400",
+              "border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)]",
+            meta: "text-[color:var(--text-tertiary)]",
           }
         : {
             outer:
-              "border-amber-300/25 bg-[linear-gradient(180deg,rgba(251,191,36,0.2),rgba(251,146,60,0.12))] text-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
-            meta: "text-amber-100/70",
-          };
+              "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-primary)]",
+            meta: "text-[color:var(--text-tertiary)]",
+        };
 
   return (
     <span
@@ -719,7 +719,7 @@ function StreamingSpinner() {
   return (
     <span
       aria-label="Streaming"
-      className="ml-2 inline-block size-3 animate-spin rounded-full border-2 border-amber-300/30 border-t-amber-300 align-middle"
+      className="ml-2 inline-block size-3 animate-spin rounded-full border-2 border-[rgba(17,24,39,0.18)] border-t-[color:var(--text-primary)] align-middle"
     />
   );
 }
@@ -756,8 +756,8 @@ const ChatMessageItem = memo(function ChatMessageItem({
     <div
       className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
         isUser
-          ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
-          : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
+          ? "ml-auto w-fit max-w-[min(100%,44rem)] border-[rgba(17,24,39,0.18)] bg-[#d1d5db] text-[color:var(--text-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+          : "w-full max-w-[min(124ch,100%)] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
       }`}
     >
       <div>
@@ -781,7 +781,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         {attachments.length ? (
           <div
             className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
-              isUser ? "border-stone-950/12" : "border-white/8"
+              isUser ? "border-[rgba(17,24,39,0.12)]" : "border-[color:var(--border-subtle)]"
             }`}
           >
             {attachments.map((attachment) => (
@@ -794,7 +794,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
           </div>
         ) : null}
       </div>
-      <p className={`mt-1 text-[10px] ${isUser ? "text-stone-700" : "text-stone-500"}`}>
+      <p className={`mt-1 text-[10px] ${isUser ? "text-[color:var(--text-tertiary)]" : "text-[color:var(--text-quaternary)]"}`}>
         {formatRelativeDate(createdAt)}
       </p>
     </div>
@@ -827,7 +827,7 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
   activeRunBlocks: AssistantRenderBlock[];
 }) {
   return (
-    <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-white/8 bg-black/25 px-2 py-1.75 text-stone-100 sm:px-3 sm:py-2">
+    <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
       <div>
         <div className="space-y-3">
           {activeRunBlocks.map((block) => {
@@ -842,13 +842,13 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
             return <AssistantLifecycleNote key={block.key} entry={block.entry} streaming={block.streaming} />;
           })}
           {activeRunBlocks.length === 0 ? (
-            <div className="flex items-center text-sm text-stone-400">
+            <div className="flex items-center text-sm text-[color:var(--text-tertiary)]">
               <StreamingSpinner />
             </div>
           ) : null}
         </div>
       </div>
-      <p className="mt-1 text-[10px] text-stone-500">{formatRelativeDate(activeRun.updatedAt)}</p>
+      <p className="mt-1 text-[10px] text-[color:var(--text-quaternary)]">{formatRelativeDate(activeRun.updatedAt)}</p>
     </div>
   );
 });
@@ -890,17 +890,17 @@ const ChatSidebar = memo(function ChatSidebar({
 }) {
   return (
     <aside
-      className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-white/8 bg-[#120f0df7] shadow-[0_25px_80px_rgba(0,0,0,0.5)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
+      className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.96)] shadow-[var(--shadow-panel)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
         drawerOpen ? "translate-x-0" : "-translate-x-[108%] lg:translate-x-0"
       } ${isSidebarCollapsed ? "lg:w-[3.5rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
     >
-      <div className="border-b border-white/8 px-2 py-1.5 sm:px-2.5">
+      <div className="border-b border-[color:var(--border-subtle)] px-2 py-1.5 sm:px-2.5">
         {isSidebarCollapsed ? (
           <div className="hidden justify-center lg:flex">
             <button
               type="button"
               onClick={onExpandSidebar}
-              className="inline-flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
+              className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full text-xs"
               aria-label="Expand sidebar"
               title="Expand sidebar"
             >
@@ -911,14 +911,14 @@ const ChatSidebar = memo(function ChatSidebar({
           <>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-medium text-stone-100">{user.openclawAgentId}</p>
-                <p className="mt-0.5 truncate text-[10px] text-stone-500">{user.username}</p>
+                <p className="truncate text-[11px] font-medium text-[color:var(--text-primary)]">{user.openclawAgentId}</p>
+                <p className="mt-0.5 truncate text-[10px] text-[color:var(--text-quaternary)]">{user.username}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onCollapseSidebar}
-                  className="hidden size-8 items-center justify-center rounded-full border border-white/10 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100 lg:inline-flex"
+                  className="ui-button-secondary hidden size-8 items-center justify-center rounded-full text-xs lg:inline-flex"
                   aria-label="Collapse sidebar"
                   title="Collapse sidebar"
                 >
@@ -927,7 +927,7 @@ const ChatSidebar = memo(function ChatSidebar({
                 <button
                   type="button"
                   onClick={onCloseDrawer}
-                  className="rounded-full border border-white/10 px-2.5 py-1.5 text-xs text-stone-300 lg:hidden"
+                  className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
                 >
                   Close
                 </button>
@@ -937,7 +937,7 @@ const ChatSidebar = memo(function ChatSidebar({
               <button
                 type="button"
                 onClick={onCreateSession}
-                className="min-w-0 flex-1 rounded-[0.7rem] border border-amber-300/20 bg-amber-400 px-2.5 py-1.5 text-[11px] font-semibold text-stone-950 transition hover:bg-amber-300"
+                className="ui-button-primary min-w-0 flex-1 rounded-[0.7rem] px-2.5 py-1.5 text-[11px] font-semibold"
               >
                 New
               </button>
@@ -962,21 +962,21 @@ const ChatSidebar = memo(function ChatSidebar({
                 isSidebarCollapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
               } ${
                 isActive
-                  ? "border-amber-400/70 bg-amber-400/10"
-                  : "border-white/8 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"
+                  ? "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]"
+                  : "border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.68)] hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-panel-strong)]"
               }`}
             >
               {isSidebarCollapsed ? (
                 <div className="flex items-center justify-center">
-                  <span className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-semibold uppercase text-stone-200">
+                  <span className="ui-badge-strong flex size-7 items-center justify-center rounded-full text-[11px] font-semibold uppercase">
                     {session.title.slice(0, 1)}
                   </span>
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-medium text-stone-100">{session.title}</p>
+                  <p className="truncate text-xs font-medium text-[color:var(--text-primary)]">{session.title}</p>
                   {isBusy ? (
-                    <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
+                    <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
                       Live
                     </span>
                   ) : null}
@@ -986,14 +986,14 @@ const ChatSidebar = memo(function ChatSidebar({
           ))}
           <div ref={loadMoreSentinelRef} className="h-2 w-full" />
           {isSidebarCollapsed ? null : (
-            <div className="px-1 py-1 text-center text-[10px] text-stone-500">
+            <div className="px-1 py-1 text-center text-[10px] text-[color:var(--text-quaternary)]">
               {loadingMore ? (
                 <span>Loading…</span>
               ) : loadMoreError ? (
                 <button
                   type="button"
                   onClick={onLoadMoreSessions}
-                  className="text-stone-300 transition hover:text-amber-100"
+                  className="text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
                 >
                   Retry loading
                 </button>
@@ -1006,12 +1006,12 @@ const ChatSidebar = memo(function ChatSidebar({
       </div>
 
       {isSidebarCollapsed ? null : (
-        <div className="border-t border-white/8 px-2 py-1.5 sm:px-2.5">
+        <div className="border-t border-[color:var(--border-subtle)] px-2 py-1.5 sm:px-2.5">
           <div className="grid grid-cols-2 gap-1.5">
             {user.role === "ADMIN" ? (
               <Link
                 href="/admin"
-                className="inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
+                className="ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium"
               >
                 Admin
               </Link>
@@ -1019,7 +1019,7 @@ const ChatSidebar = memo(function ChatSidebar({
               <span className="hidden" aria-hidden="true" />
             )}
             <LogoutButton
-              className={`inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400/80 hover:text-amber-200 ${
+              className={`ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium ${
                 user.role === "ADMIN" ? "" : "col-span-2"
               }`}
             />
@@ -2270,7 +2270,7 @@ export function ChatShell({
           type="button"
           aria-label="Close sessions drawer"
           onClick={() => setDrawerOpen(false)}
-          className="fixed inset-0 z-20 bg-black/55 lg:hidden"
+          className="ui-overlay fixed inset-0 z-20 lg:hidden"
         />
       ) : null}
 
@@ -2295,18 +2295,18 @@ export function ChatShell({
 
       <section
         aria-label={`Chat workspace for ${user.openclawAgentId}`}
-        className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.06))] shadow-[0_25px_80px_rgba(0,0,0,0.24)]"
+        className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.74)] shadow-[var(--shadow-panel)]"
       >
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/8 px-2 py-1.5">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--border-subtle)] px-2 py-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
               onClick={handleOpenDrawer}
-              className="rounded-full border border-white/10 px-2.5 py-1.5 text-xs text-stone-300 lg:hidden"
+              className="ui-button-secondary rounded-full px-2.5 py-1.5 text-xs lg:hidden"
             >
               Sessions
             </button>
-            <h2 className="truncate text-xs font-semibold text-white sm:text-sm">
+            <h2 className="truncate text-xs font-semibold text-[color:var(--text-primary)] sm:text-sm">
               {activeSession?.title ?? "Create a session"}
             </h2>
           </div>
@@ -2315,7 +2315,7 @@ export function ChatShell({
               <button
                 type="button"
                 onClick={abortSession}
-                className="rounded-full border border-rose-400/60 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:border-rose-300"
+                className="ui-button-danger rounded-full px-2.5 py-1.5 text-xs font-medium"
               >
                 Abort
               </button>
@@ -2330,9 +2330,9 @@ export function ChatShell({
         >
           <div className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
             {pairing ? (
-              <div className="max-w-[96ch] rounded-[0.9rem] border border-amber-400/20 bg-amber-400/10 px-3 py-2.5 text-amber-100 sm:px-4 sm:py-3">
+              <div className="max-w-[96ch] rounded-[0.9rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
                 <p className="text-xs font-semibold">当前设备尚未完成绑定</p>
-                <p className="mt-1.5 text-xs text-amber-100/80">
+                <p className="mt-1.5 text-xs text-[color:var(--text-secondary)]">
                   请联系管理员进行设备绑定，完成后即可继续使用。
                 </p>
                 <div className="mt-2.5 flex flex-wrap gap-2">
@@ -2344,7 +2344,7 @@ export function ChatShell({
                         void loadSession(activeSessionId);
                       }
                     }}
-                    className="rounded-full border border-amber-100/30 px-3 py-1.5 text-xs font-medium text-amber-50 transition hover:border-amber-100/60"
+                    className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium"
                   >
                     Retry connection
                   </button>
@@ -2357,7 +2357,7 @@ export function ChatShell({
                 <button
                   type="button"
                   onClick={createSession}
-                  className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
+                  className="ui-button-secondary rounded-full px-4 py-2 text-xs"
                 >
                   New session
                 </button>
@@ -2383,7 +2383,7 @@ export function ChatShell({
             <button
               type="button"
               onClick={handleScrollToBottomClick}
-              className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-[#18120df2] px-3 py-1.5 text-[11px] font-medium text-amber-100 shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition hover:border-amber-300/60 hover:bg-[#21170ff2]"
+              className="ui-button-primary pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium shadow-[var(--shadow-float)]"
             >
               <span aria-hidden="true" className="text-xs leading-none">↓</span>
               <span>{loading ? "New messages" : "Back to bottom"}</span>
@@ -2391,9 +2391,9 @@ export function ChatShell({
           </div>
         ) : null}
 
-        <div className="shrink-0 border-t border-white/8 bg-black/20 px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2">
+        <div className="shrink-0 border-t border-[color:var(--border-subtle)] bg-[rgba(248,250,252,0.78)] px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2">
           <div className="mx-auto w-full max-w-none">
-            <div className="rounded-[0.85rem] border border-white/10 bg-[#0f0d0cf0] px-1.5 py-1.5 sm:px-2 sm:py-2">
+            <div className="rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-1.5 py-1.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2">
               {pendingAttachments.length ? (
                 <div className="mb-1.5 flex flex-wrap gap-1">
                   {pendingAttachments.map((attachment) => (
@@ -2415,12 +2415,12 @@ export function ChatShell({
                   onKeyDown={handleComposerKeyDown}
                   rows={2}
                   placeholder="Message the agent..."
-                  className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-stone-100 outline-none placeholder:text-stone-500 sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
+                  className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
                   disabled={!activeSessionId || loading}
                 />
-                <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-white/8 pt-1.5">
+                <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
                   <div className="min-w-0 flex flex-wrap items-center gap-1">
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-stone-200 transition hover:border-amber-400 sm:px-2.5 sm:text-[11px]">
+                    <label className="ui-button-secondary inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]">
                       <input
                         type="file"
                         className="hidden"
@@ -2442,30 +2442,30 @@ export function ChatShell({
                       uploading ||
                       (!text.trim() && pendingAttachments.length === 0)
                     }
-                    className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-[10px] font-semibold text-stone-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-100 sm:px-3 sm:py-1.5 sm:text-[11px]"
+                    className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
                   >
                     {loading ? "Sending..." : "Send"}
                   </button>
                 </div>
               </form>
-              {error ? <p className="mt-1.5 text-[11px] text-rose-300">{error}</p> : null}
+              {error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
             </div>
           </div>
         </div>
       </section>
 
       {renameTargetSession ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+        <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
           <button
             type="button"
             aria-label="Close rename modal"
             onClick={closeRenameModal}
             className="absolute inset-0"
           />
-          <div className="relative z-10 w-full max-w-md rounded-[1rem] border border-white/10 bg-[#17120ff7] p-4 shadow-[0_25px_80px_rgba(0,0,0,0.45)]">
+          <div className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4">
             <div className="mb-4">
-              <p className="text-sm font-semibold text-stone-100">Rename session</p>
-              <p className="mt-1 text-xs text-stone-400">Update how this session appears in the sidebar.</p>
+              <p className="text-sm font-semibold text-[color:var(--text-primary)]">Rename session</p>
+              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Update how this session appears in the sidebar.</p>
             </div>
 
             <form onSubmit={submitRenameSession}>
@@ -2489,26 +2489,26 @@ export function ChatShell({
                       closeRenameModal();
                     }
                   }}
-                  className="w-full rounded-[0.8rem] border border-white/10 bg-black/25 px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-amber-400"
+                  className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
                   placeholder="Session title"
                 />
               </label>
 
-              {renameError ? <p className="mt-2 text-xs text-rose-300">{renameError}</p> : null}
+              {renameError ? <p className="mt-2 text-xs text-red-600">{renameError}</p> : null}
 
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={closeRenameModal}
                   disabled={renameSubmitting}
-                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-stone-300 transition hover:border-white/20 hover:text-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={renameSubmitting}
-                  className="rounded-full bg-amber-400 px-3 py-1.5 text-xs font-semibold text-stone-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-100"
+                  className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
                 >
                   {renameSubmitting ? "Saving..." : "Save"}
                 </button>

@@ -168,23 +168,20 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-[0_25px_80px_rgba(0,0,0,0.35)]">
+      <section className="ui-card rounded-[2rem] p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-amber-300/70">Members</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">{activeCount} active seats</h2>
+            <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">Members</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">{activeCount} active seats</h2>
           </div>
         </div>
         <div className="mt-5 space-y-3">
           {users.map((user) => (
-            <div
-              key={user.id}
-              className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4"
-            >
+            <div key={user.id} className="ui-surface-muted rounded-2xl px-4 py-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="font-medium text-stone-100">{user.username}</p>
-                  <p className="text-sm text-stone-400">
+                  <p className="font-medium text-[color:var(--text-primary)]">{user.username}</p>
+                  <p className="text-sm text-[color:var(--text-tertiary)]">
                     {user.openclawAgentId} · {user.role} · {user.isActive ? "Active" : "Disabled"}
                   </p>
                 </div>
@@ -193,7 +190,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                     type="button"
                     onClick={() => toggleUser(user)}
                     disabled={actionUserId === user.id}
-                    className="rounded-full border border-white/12 px-3 py-2 text-sm text-stone-200 transition hover:border-amber-400 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="ui-button-secondary rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed"
                   >
                     {actionUserId === user.id ? "Saving..." : user.isActive ? "Disable" : "Enable"}
                   </button>
@@ -202,7 +199,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                     onClick={() => deleteUser(user)}
                     disabled={user.isActive || actionUserId === user.id}
                     title={user.isActive ? "Only disabled users can be deleted." : undefined}
-                    className="rounded-full border border-red-400/25 px-3 py-2 text-sm text-red-200 transition hover:border-red-300 hover:text-red-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-stone-500"
+                    className="ui-button-danger rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)]"
                   >
                     Delete user
                   </button>
@@ -219,33 +216,33 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
                       [user.id]: event.target.value,
                     }))
                   }
-                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none placeholder:text-stone-500 focus:border-amber-400"
+                  className="ui-input min-w-0 flex-1 rounded-2xl px-4 py-3"
                   placeholder="new password"
                 />
                 <button
                   type="button"
                   onClick={() => resetPassword(user)}
                   disabled={actionUserId === user.id}
-                  className="rounded-2xl border border-amber-400/30 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:border-amber-300 hover:text-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
                 >
                   Force reset password
                 </button>
               </div>
               {user.isActive ? (
-                <p className="mt-2 text-xs text-stone-500">Only disabled users can be deleted.</p>
+                <p className="mt-2 text-xs text-[color:var(--text-quaternary)]">Only disabled users can be deleted.</p>
               ) : null}
             </div>
           ))}
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-[0_25px_80px_rgba(0,0,0,0.35)]">
-        <p className="text-xs uppercase tracking-[0.3em] text-amber-300/70">Create member</p>
+      <section className="ui-card rounded-[2rem] p-5">
+        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">Create member</p>
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={createUser}>
           <input
             value={form.username}
             onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-            className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none placeholder:text-stone-500 focus:border-amber-400"
+            className="ui-input rounded-2xl px-4 py-3"
             placeholder="username"
             required
           />
@@ -254,7 +251,7 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
             onChange={(event) =>
               setForm((current) => ({ ...current, openclawAgentId: event.target.value }))
             }
-            className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none placeholder:text-stone-500 focus:border-amber-400"
+            className="ui-input rounded-2xl px-4 py-3"
             placeholder="agent id"
             required
           />
@@ -262,14 +259,14 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
             type="password"
             value={form.password}
             onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none placeholder:text-stone-500 focus:border-amber-400"
+            className="ui-input rounded-2xl px-4 py-3"
             placeholder="password"
             required
           />
           <select
             value={form.role}
             onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}
-            className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-stone-100 outline-none focus:border-amber-400"
+            className="ui-input rounded-2xl px-4 py-3"
           >
             <option value="MEMBER">Member</option>
             <option value="ADMIN">Admin</option>
@@ -277,12 +274,12 @@ export function AdminUserManager({ initialUsers }: { initialUsers: AdminUser[] }
           <button
             type="submit"
             disabled={createLoading}
-            className="rounded-2xl bg-amber-400 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-300 disabled:bg-amber-100"
+            className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold"
           >
             {createLoading ? "Creating..." : "Create member"}
           </button>
         </form>
-        {message ? <p className="mt-3 text-sm text-stone-300">{message}</p> : null}
+        {message ? <p className="mt-3 text-sm text-[color:var(--text-secondary)]">{message}</p> : null}
       </section>
     </div>
   );
