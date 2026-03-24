@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SessionStatus } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
@@ -29,6 +30,9 @@ export async function POST(request: Request) {
   const session = await getChatSessionForUser(user.id, sessionId);
   if (!session) {
     return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
+  }
+  if (session.status === SessionStatus.ARCHIVED) {
+    return NextResponse.json({ error: messages.sessions.sessionArchived }, { status: 409 });
   }
 
   try {

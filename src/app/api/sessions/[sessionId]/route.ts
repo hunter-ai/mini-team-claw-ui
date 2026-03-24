@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SessionStatus } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { serializeSessionSummary } from "@/lib/chat-response";
@@ -37,17 +38,25 @@ export async function PATCH(
   }
 
   const { sessionId } = await params;
+  const session = await getChatSessionForUser(user.id, sessionId);
+  if (!session) {
+    return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
+  }
+  if (session.status === SessionStatus.ARCHIVED) {
+    return NextResponse.json({ error: messages.sessions.sessionArchived }, { status: 409 });
+  }
+
   const result = await renameChatSessionForUser(user.id, sessionId, title);
   if (result.count === 0) {
     return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
-  const session = await getChatSessionForUser(user.id, sessionId);
-  if (!session) {
+  const updatedSession = await getChatSessionForUser(user.id, sessionId);
+  if (!updatedSession) {
     return NextResponse.json({ error: messages.sessions.sessionRefreshFailed }, { status: 500 });
   }
 
   return NextResponse.json({
-    session: serializeSessionSummary(session),
+    session: serializeSessionSummary(updatedSession),
   });
 }

@@ -90,6 +90,11 @@ const en = {
   },
   chat: {
     live: "Live",
+    readOnly: "Read-only",
+    recentSessions: "Recent conversations",
+    archivedSessions: "Archived conversations",
+    showMore: "Show more",
+    showLess: "Show less",
     loadingMore: "Loading...",
     retryLoading: "Retry loading",
     noMoreSessions: "No more sessions",
@@ -100,6 +105,8 @@ const en = {
     backToBottom: "Back to bottom",
     newMessages: "New messages",
     messagePlaceholder: "Message the agent...",
+    archivedMessagePlaceholder: "This session is archived and can only be viewed",
+    archivedReadOnlyNotice: "This session was automatically archived after 7 days since the last message. It is now view-only and no longer accepts messages or uploads.",
     attach: "Attach",
     uploading: "Uploading...",
     send: "Send",
@@ -138,6 +145,7 @@ const en = {
     abortFailed: "Abort failed",
     runNotFound: "Run not found",
     activeResponseConflict: "A response is already in progress for this session.",
+    sessionArchived: "This session is archived and can no longer accept new messages.",
   },
   attachments: {
     fileRequired: "File is required",

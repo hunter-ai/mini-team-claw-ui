@@ -1,9 +1,10 @@
-import { ChatRunStatus } from "@prisma/client";
+import { ChatRunStatus, SessionStatus } from "@prisma/client";
 import { mapActiveChatRun } from "@/lib/chat-run-service";
 
 type SessionLike = {
   id: string;
   title: string;
+  status: SessionStatus;
   updatedAt: Date;
   lastMessageAt: Date | null;
   runs?: Array<{
@@ -37,6 +38,7 @@ export function serializeSessionSummary(session: SessionLike) {
   return {
     id: session.id,
     title: session.title,
+    status: session.status,
     updatedAt: session.updatedAt.toISOString(),
     lastMessageAt: session.lastMessageAt?.toISOString() ?? null,
     activeRun: serializeActiveRun(session.runs?.[0] ?? null),

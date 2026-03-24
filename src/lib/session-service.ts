@@ -6,6 +6,8 @@ export const SESSION_PAGE_SIZE = 30;
 export const RUN_HISTORY_LIMIT = 20;
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const SESSION_TITLE_MAX_LENGTH = 60;
+export const SESSION_AUTO_ARCHIVE_DAYS = 7;
+export const SESSION_AUTO_ARCHIVE_MS = SESSION_AUTO_ARCHIVE_DAYS * 24 * 60 * 60 * 1000;
 
 const activeRunInclude = {
   runs: {
@@ -99,13 +101,13 @@ function buildSessionCursorWhere(cursor: SessionCursorPayload): Prisma.ChatSessi
 }
 
 export async function listChatSessions(userId: string, options: ListChatSessionsOptions = {}) {
+  await archiveExpiredChatSessionsForUser(userId);
   const limit = Math.min(Math.max(options.limit ?? SESSION_PAGE_SIZE, 1), 100);
   const cursorWhere = options.cursor ? buildSessionCursorWhere(decodeSessionCursor(options.cursor)) : null;
 
   const sessions = await prisma.chatSession.findMany({
     where: {
       userId,
-      status: SessionStatus.ACTIVE,
       ...(cursorWhere ? { AND: [cursorWhere] } : {}),
     },
     orderBy: sessionOrderBy,
@@ -153,6 +155,7 @@ export async function createChatSession(
 }
 
 export async function getChatSessionForUser(userId: string, sessionId: string) {
+  await archiveExpiredChatSessionsForUser(userId);
   return prisma.chatSession.findFirst({
     where: {
       id: sessionId,
@@ -166,6 +169,27 @@ export async function getChatSessionForUser(userId: string, sessionId: string) {
         orderBy: { createdAt: "desc" },
       },
       ...runHistoryInclude,
+    },
+  });
+}
+
+export async function archiveExpiredChatSessionsForUser(userId: string) {
+  const cutoff = new Date(Date.now() - SESSION_AUTO_ARCHIVE_MS);
+
+  return prisma.chatSession.updateMany({
+    where: {
+      userId,
+      status: SessionStatus.ACTIVE,
+      OR: [
+        { lastMessageAt: { lte: cutoff } },
+        {
+          lastMessageAt: null,
+          updatedAt: { lte: cutoff },
+        },
+      ],
+    },
+    data: {
+      status: SessionStatus.ARCHIVED,
     },
   });
 }

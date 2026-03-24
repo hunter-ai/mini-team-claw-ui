@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SessionStatus } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { serializeRunHistoryItem } from "@/lib/chat-run-events";
@@ -96,6 +97,9 @@ export async function POST(
   const session = await getChatSessionForUser(user.id, sessionId);
   if (!session) {
     return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
+  }
+  if (session.status === SessionStatus.ARCHIVED) {
+    return NextResponse.json({ error: messages.sessions.sessionArchived }, { status: 409 });
   }
 
   const existingRun = await getChatRunByClientRequestId(
