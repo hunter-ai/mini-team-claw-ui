@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { memo } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -726,6 +728,308 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   return <span aria-hidden="true" className="text-sm leading-none">{collapsed ? "»" : "«"}</span>;
 }
 
+const ChatMessageItem = memo(function ChatMessageItem({
+  item,
+  segmentation,
+}: {
+  item: RenderableMessage;
+  segmentation: RunContentSegmentation | null;
+}) {
+  const isUser = item.kind === "message" && item.message.role === "USER";
+  const run = item.run;
+  const content = item.kind === "message" ? item.message.content : item.run.draftAssistantContent;
+  const createdAt = item.kind === "message" ? item.message.createdAt : item.run.updatedAt;
+  const attachments = item.kind === "message" ? item.message.attachments : [];
+  const assistantBlocks = useMemo(
+    () =>
+      !isUser
+        ? buildRenderableAssistantBlocks({
+            content,
+            run,
+            segmentation,
+          })
+        : [],
+    [content, isUser, run, segmentation],
+  );
+
+  return (
+    <div
+      className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
+        isUser
+          ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
+          : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
+      }`}
+    >
+      <div>
+        {isUser ? (
+          <MessageBody content={content} isUser />
+        ) : (
+          <div className="space-y-3">
+            {assistantBlocks.map((block) => {
+              if (block.kind === "markdown_text") {
+                return <AssistantTextBlock key={block.key} content={block.content} streaming={block.streaming} />;
+              }
+
+              if (block.kind === "tool_step") {
+                return <AssistantToolCard key={block.key} entry={block.entry} streaming={block.streaming} />;
+              }
+
+              return <AssistantLifecycleNote key={block.key} entry={block.entry} streaming={block.streaming} />;
+            })}
+          </div>
+        )}
+        {attachments.length ? (
+          <div
+            className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
+              isUser ? "border-stone-950/12" : "border-white/8"
+            }`}
+          >
+            {attachments.map((attachment) => (
+              <AttachmentBadge
+                key={attachment.id}
+                attachment={attachment}
+                tone={isUser ? "user-message" : "assistant-message"}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <p className={`mt-1 text-[10px] ${isUser ? "text-stone-700" : "text-stone-500"}`}>
+        {formatRelativeDate(createdAt)}
+      </p>
+    </div>
+  );
+}, (previous, next) => {
+  if (previous.segmentation !== next.segmentation) {
+    return false;
+  }
+
+  if (previous.item.kind !== next.item.kind || previous.item.id !== next.item.id) {
+    return false;
+  }
+
+  if (previous.item.kind === "message" && next.item.kind === "message") {
+    return previous.item.message === next.item.message && previous.item.run === next.item.run;
+  }
+
+  if (previous.item.kind === "synthetic-run" && next.item.kind === "synthetic-run") {
+    return previous.item.run === next.item.run;
+  }
+
+  return false;
+});
+
+const ActiveRunPanel = memo(function ActiveRunPanel({
+  activeRun,
+  activeRunBlocks,
+}: {
+  activeRun: SessionRun;
+  activeRunBlocks: AssistantRenderBlock[];
+}) {
+  return (
+    <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-white/8 bg-black/25 px-2 py-1.75 text-stone-100 sm:px-3 sm:py-2">
+      <div>
+        <div className="space-y-3">
+          {activeRunBlocks.map((block) => {
+            if (block.kind === "markdown_text") {
+              return <AssistantTextBlock key={block.key} content={block.content} streaming={block.streaming} />;
+            }
+
+            if (block.kind === "tool_step") {
+              return <AssistantToolCard key={block.key} entry={block.entry} streaming={block.streaming} />;
+            }
+
+            return <AssistantLifecycleNote key={block.key} entry={block.entry} streaming={block.streaming} />;
+          })}
+          {activeRunBlocks.length === 0 ? (
+            <div className="flex items-center text-sm text-stone-400">
+              <StreamingSpinner />
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <p className="mt-1 text-[10px] text-stone-500">{formatRelativeDate(activeRun.updatedAt)}</p>
+    </div>
+  );
+});
+
+const ChatSidebar = memo(function ChatSidebar({
+  drawerOpen,
+  isSidebarCollapsed,
+  user,
+  sidebarSessions,
+  hasMore,
+  loadingMore,
+  loadMoreError,
+  sessionsScrollerRef,
+  loadMoreSentinelRef,
+  onCloseDrawer,
+  onCollapseSidebar,
+  onExpandSidebar,
+  onCreateSession,
+  onSelectSession,
+  onOpenRenameModal,
+  onLoadMoreSessions,
+}: {
+  drawerOpen: boolean;
+  isSidebarCollapsed: boolean;
+  user: UserShape;
+  sidebarSessions: Array<{ session: Session; isActive: boolean; isBusy: boolean }>;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMoreError: string | null;
+  sessionsScrollerRef: RefObject<HTMLDivElement | null>;
+  loadMoreSentinelRef: RefObject<HTMLDivElement | null>;
+  onCloseDrawer: () => void;
+  onCollapseSidebar: () => void;
+  onExpandSidebar: () => void;
+  onCreateSession: () => void;
+  onSelectSession: (sessionId: string) => void;
+  onOpenRenameModal: (session: Session) => void;
+  onLoadMoreSessions: () => void;
+}) {
+  return (
+    <aside
+      className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-white/8 bg-[#120f0df7] shadow-[0_25px_80px_rgba(0,0,0,0.5)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
+        drawerOpen ? "translate-x-0" : "-translate-x-[108%] lg:translate-x-0"
+      } ${isSidebarCollapsed ? "lg:w-[3.5rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
+    >
+      <div className="border-b border-white/8 px-2 py-1.5 sm:px-2.5">
+        {isSidebarCollapsed ? (
+          <div className="hidden justify-center lg:flex">
+            <button
+              type="button"
+              onClick={onExpandSidebar}
+              className="inline-flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+            >
+              <SidebarToggleIcon collapsed />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-medium text-stone-100">{user.openclawAgentId}</p>
+                <p className="mt-0.5 truncate text-[10px] text-stone-500">{user.username}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onCollapseSidebar}
+                  className="hidden size-8 items-center justify-center rounded-full border border-white/10 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100 lg:inline-flex"
+                  aria-label="Collapse sidebar"
+                  title="Collapse sidebar"
+                >
+                  <SidebarToggleIcon collapsed={false} />
+                </button>
+                <button
+                  type="button"
+                  onClick={onCloseDrawer}
+                  className="rounded-full border border-white/10 px-2.5 py-1.5 text-xs text-stone-300 lg:hidden"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onCreateSession}
+                className="min-w-0 flex-1 rounded-[0.7rem] border border-amber-300/20 bg-amber-400 px-2.5 py-1.5 text-[11px] font-semibold text-stone-950 transition hover:bg-amber-300"
+              >
+                New
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div
+        ref={sessionsScrollerRef}
+        className={`min-h-0 flex-1 overflow-y-auto py-1.5 ${isSidebarCollapsed ? "px-1" : "px-1.5"}`}
+      >
+        <div className="space-y-1">
+          {sidebarSessions.map(({ session, isActive, isBusy }) => (
+            <button
+              key={session.id}
+              type="button"
+              onClick={() => onSelectSession(session.id)}
+              onDoubleClick={() => onOpenRenameModal(session)}
+              title={isSidebarCollapsed ? session.title : undefined}
+              className={`w-full rounded-[0.75rem] border text-left transition ${
+                isSidebarCollapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
+              } ${
+                isActive
+                  ? "border-amber-400/70 bg-amber-400/10"
+                  : "border-white/8 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"
+              }`}
+            >
+              {isSidebarCollapsed ? (
+                <div className="flex items-center justify-center">
+                  <span className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-semibold uppercase text-stone-200">
+                    {session.title.slice(0, 1)}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-medium text-stone-100">{session.title}</p>
+                  {isBusy ? (
+                    <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
+                      Live
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </button>
+          ))}
+          <div ref={loadMoreSentinelRef} className="h-2 w-full" />
+          {isSidebarCollapsed ? null : (
+            <div className="px-1 py-1 text-center text-[10px] text-stone-500">
+              {loadingMore ? (
+                <span>Loading…</span>
+              ) : loadMoreError ? (
+                <button
+                  type="button"
+                  onClick={onLoadMoreSessions}
+                  className="text-stone-300 transition hover:text-amber-100"
+                >
+                  Retry loading
+                </button>
+              ) : hasMore ? null : sidebarSessions.length ? (
+                <span>No more sessions</span>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isSidebarCollapsed ? null : (
+        <div className="border-t border-white/8 px-2 py-1.5 sm:px-2.5">
+          <div className="grid grid-cols-2 gap-1.5">
+            {user.role === "ADMIN" ? (
+              <Link
+                href="/admin"
+                className="inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
+              >
+                Admin
+              </Link>
+            ) : (
+              <span className="hidden" aria-hidden="true" />
+            )}
+            <LogoutButton
+              className={`inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400/80 hover:text-amber-200 ${
+                user.role === "ADMIN" ? "" : "col-span-2"
+              }`}
+            />
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+});
+
 export function ChatShell({
   initialSessions,
   initialHasMore,
@@ -833,6 +1137,8 @@ export function ChatShell({
     [activeRun, runHistory],
   );
   const activeRunSegmentation = activeRun ? contentSegmentsByRunId[activeRun.id] ?? null : null;
+  const activeStreamingRunId =
+    activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? activeRun.id : null;
   const activeRunBlocks = useMemo(() => {
     if (!activeRun || !["STARTING", "STREAMING"].includes(activeRun.status)) {
       return [];
@@ -874,11 +1180,7 @@ export function ChatShell({
       (run) =>
         !run.assistantMessageId &&
         run.userMessageId &&
-        !(
-          activeRun &&
-          ["STARTING", "STREAMING"].includes(activeRun.status) &&
-          run.runId === activeRun.id
-        ),
+        !(activeStreamingRunId && run.runId === activeStreamingRunId),
     );
 
     for (const run of syntheticRuns) {
@@ -908,7 +1210,19 @@ export function ChatShell({
     }
 
     return next;
-  }, [activeRun, messages, runHistory]);
+  }, [activeStreamingRunId, messages, runHistory]);
+  const sidebarSessions = useMemo(
+    () =>
+      sessions.map((session) => ({
+        session,
+        isActive: session.id === activeSessionId,
+        isBusy: isRunBusy(runStateBySession[session.id] ?? mapRunStatusToState(session.activeRun?.status)),
+      })),
+    [activeSessionId, runStateBySession, sessions],
+  );
+  const activeSessionLoaded = activeSessionId ? (loadedSessionIds[activeSessionId] ?? false) : true;
+  const activeSessionHasRenderableContent =
+    Boolean(pairing) || renderableMessages.length > 0 || Boolean(activeRun);
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
@@ -930,6 +1244,17 @@ export function ChatShell({
     }
 
     return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+  }, []);
+
+  const setSessionRunState = useCallback((sessionId: string, nextState: RunState) => {
+    setRunStateBySession((current) =>
+      current[sessionId] === nextState
+        ? current
+        : {
+            ...current,
+            [sessionId]: nextState,
+          },
+    );
   }, []);
 
   const updateActiveRun = useCallback((sessionId: string, run: SessionRun | null) => {
@@ -1086,15 +1411,7 @@ export function ChatShell({
       lastEventSeq: patch.lastEventSeq,
       updatedAt: patch.updatedAt,
     });
-    patchRunHistory(sessionId, fallbackRun.id, (existing) =>
-      existing
-        ? {
-            draftAssistantContent: patch.draftAssistantContent,
-            updatedAt: patch.updatedAt,
-          }
-        : null,
-    );
-  }, [patchRunHistory, updateActiveRun]);
+  }, [updateActiveRun]);
 
   const scheduleBufferedRunPatchFlush = useCallback((sessionId: string, fallbackRun: SessionRun) => {
     if (flushTimersBySessionRef.current[sessionId]) {
@@ -1172,7 +1489,7 @@ export function ChatShell({
       }
 
       if (payload.type === "started") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        setSessionRunState(sessionId, "streaming");
         updateActiveRun(sessionId, {
           ...(activeRunBySessionRef.current[sessionId] ?? run),
           id: run.id,
@@ -1195,7 +1512,7 @@ export function ChatShell({
       }
 
       if (payload.type === "delta") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        setSessionRunState(sessionId, "streaming");
         const currentRun = activeRunBySessionRef.current[sessionId] ?? run;
         const currentBufferedPatch = bufferedRunPatchBySessionRef.current[sessionId];
         const nextDraftAssistantContent =
@@ -1214,7 +1531,7 @@ export function ChatShell({
       }
 
       if (payload.type === "tool") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "streaming" }));
+        setSessionRunState(sessionId, "streaming");
         const activityEntry = buildRunActivityEntryFromEvent(payload);
         captureRunSegmentation(sessionId, run, activityEntry);
         if (activityEntry) {
@@ -1243,18 +1560,18 @@ export function ChatShell({
       });
 
       if (payload.type === "done") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "completed" }));
+        setSessionRunState(sessionId, "completed");
         setErrorBySession((current) => ({ ...current, [sessionId]: null }));
         setPairingBySession((current) => ({ ...current, [sessionId]: null }));
       } else if (payload.type === "aborted") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "aborted" }));
+        setSessionRunState(sessionId, "aborted");
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.reason }));
       } else if (payload.type === "pairing_required") {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setSessionRunState(sessionId, "failed");
         setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.pairing.message }));
       } else {
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setSessionRunState(sessionId, "failed");
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.error }));
       }
 
@@ -1311,7 +1628,7 @@ export function ChatShell({
           runId: run.id,
           nextAttempt,
         });
-        setRunStateBySession((current) => ({ ...current, [sessionId]: "failed" }));
+        setSessionRunState(sessionId, "failed");
         setErrorBySession((current) => ({
           ...current,
           [sessionId]: "Connection to the active response was lost. Refresh this session to recover.",
@@ -1325,12 +1642,19 @@ export function ChatShell({
         nextAttempt,
         afterSeq: lastEventSeqByRunRef.current[run.id] ?? run.lastEventSeq ?? 0,
       });
-      setRunStateBySession((current) => ({ ...current, [sessionId]: "reconnecting" }));
+      setSessionRunState(sessionId, "reconnecting");
       reconnectTimersRef.current[run.id] = window.setTimeout(() => {
         subscribeToRun(sessionId, latestRun);
       }, Math.min(1000 * nextAttempt, 4000));
     };
-  }, [captureRunSegmentation, flushBufferedRunPatch, patchRunHistory, scheduleBufferedRunPatchFlush, updateActiveRun]);
+  }, [
+    captureRunSegmentation,
+    flushBufferedRunPatch,
+    patchRunHistory,
+    scheduleBufferedRunPatchFlush,
+    setSessionRunState,
+    updateActiveRun,
+  ]);
 
   const loadSession = useCallback(async (sessionId: string, clearError = true) => {
     logChatShellDebug("[chat-debug][chat-shell] loading session", {
@@ -1379,7 +1703,7 @@ export function ChatShell({
     updateActiveRun(sessionId, payload.activeRun);
 
     const nextState = payload.activeRun ? mapRunStatusToState(payload.activeRun.status) : "idle";
-    setRunStateBySession((current) => ({ ...current, [sessionId]: nextState }));
+    setSessionRunState(sessionId, nextState);
 
     if (!payload.activeRun) {
       setPairingBySession((current) => ({ ...current, [sessionId]: null }));
@@ -1391,7 +1715,7 @@ export function ChatShell({
     if (["STARTING", "STREAMING"].includes(payload.activeRun.status)) {
       subscribeToRun(sessionId, payload.activeRun);
     }
-  }, [replaceRunHistory, subscribeToRun, updateActiveRun, updateSessionSummary]);
+  }, [replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -1481,9 +1805,29 @@ export function ChatShell({
       return;
     }
 
-    syncMessagesToBottom();
-    shouldSnapMessagesToBottomRef.current = false;
-  }, [renderableMessages, syncMessagesToBottom, visibleDraftKey]);
+    if (
+      shouldSnapMessagesToBottomRef.current &&
+      activeSessionId &&
+      !activeSessionLoaded &&
+      !activeSessionHasRenderableContent
+    ) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      syncMessagesToBottom();
+      shouldSnapMessagesToBottomRef.current = false;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    activeSessionHasRenderableContent,
+    activeSessionId,
+    activeSessionLoaded,
+    renderableMessages,
+    syncMessagesToBottom,
+    visibleDraftKey,
+  ]);
 
   useLayoutEffect(() => {
     const textarea = composerTextareaRef.current;
@@ -1524,7 +1868,7 @@ export function ChatShell({
     };
   }, [initialActiveRun, initialActiveSessionId, subscribeToRun]);
 
-  async function selectSession(sessionId: string) {
+  const selectSession = useCallback(async (sessionId: string) => {
     logChatShellDebug("[chat-debug][chat-shell] selecting session", {
       fromSessionId: activeSessionId,
       toSessionId: sessionId,
@@ -1549,9 +1893,9 @@ export function ChatShell({
     if (run && ["STARTING", "STREAMING"].includes(run.status)) {
       subscribeToRun(sessionId, run);
     }
-  }
+  }, [activeSessionId, flushBufferedRunPatch, loadedSessionIds, loadSession, subscribeToRun, syncSessionUrl]);
 
-  async function createSession() {
+  const createSession = useCallback(async () => {
     logChatShellDebug("[chat-debug][chat-shell] creating session", {
       currentActiveSessionId: activeSessionId,
     });
@@ -1579,7 +1923,7 @@ export function ChatShell({
     setRunHistoryBySession((current) => ({ ...current, [payload.session.id]: [] }));
     setLoadedSessionIds((current) => ({ ...current, [payload.session.id]: true }));
     updateActiveRun(payload.session.id, null);
-    setRunStateBySession((current) => ({ ...current, [payload.session.id]: "idle" }));
+    setSessionRunState(payload.session.id, "idle");
     setPendingAttachmentsBySession((current) => ({ ...current, [payload.session.id]: [] }));
     setComposerBySession((current) => ({ ...current, [payload.session.id]: "" }));
     setPairingBySession((current) => ({ ...current, [payload.session.id]: null }));
@@ -1588,9 +1932,9 @@ export function ChatShell({
     shouldStickMessagesToBottomRef.current = false;
     setDrawerOpen(false);
     syncSessionUrl(payload.session.id);
-  }
+  }, [activeSessionId, syncSessionUrl, updateActiveRun, updateSessionSummary, setDrawerOpen, setSessionRunState]);
 
-  function openRenameModal(session: Session) {
+  const openRenameModal = useCallback((session: Session) => {
     if (isSidebarCollapsed) {
       return;
     }
@@ -1599,9 +1943,9 @@ export function ChatShell({
     setRenameTitle(session.title);
     setRenameError(null);
     setRenameSubmitting(false);
-  }
+  }, [isSidebarCollapsed]);
 
-  function closeRenameModal() {
+  const closeRenameModal = useCallback(() => {
     if (renameSubmitting) {
       return;
     }
@@ -1609,7 +1953,7 @@ export function ChatShell({
     setRenameSessionId(null);
     setRenameTitle("");
     setRenameError(null);
-  }
+  }, [renameSubmitting]);
 
   async function submitRenameSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1755,7 +2099,7 @@ export function ChatShell({
     }));
     setComposerBySession((current) => ({ ...current, [targetSessionId]: "" }));
     setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: [] }));
-    setRunStateBySession((current) => ({ ...current, [targetSessionId]: "starting" }));
+    setSessionRunState(targetSessionId, "starting");
     setErrorBySession((current) => ({ ...current, [targetSessionId]: null }));
     setPairingBySession((current) => ({ ...current, [targetSessionId]: null }));
     updateActiveRun(targetSessionId, optimisticRun);
@@ -1779,7 +2123,7 @@ export function ChatShell({
         clientRequestId,
         error: response.message,
       });
-      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "failed" }));
+      setSessionRunState(targetSessionId, "failed");
       setErrorBySession((current) => ({ ...current, [targetSessionId]: response.message }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
@@ -1805,7 +2149,7 @@ export function ChatShell({
         errorMessage,
         status: response.status,
       });
-      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "failed" }));
+      setSessionRunState(targetSessionId, "failed");
       setErrorBySession((current) => ({ ...current, [targetSessionId]: errorMessage }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
@@ -1833,16 +2177,13 @@ export function ChatShell({
 
     if (!payload.run) {
       updateActiveRun(targetSessionId, null);
-      setRunStateBySession((current) => ({ ...current, [targetSessionId]: "idle" }));
+      setSessionRunState(targetSessionId, "idle");
       return;
     }
 
     const run = payload.run;
     updateActiveRun(targetSessionId, run);
-    setRunStateBySession((current) => ({
-      ...current,
-      [targetSessionId]: mapRunStatusToState(run.status),
-    }));
+    setSessionRunState(targetSessionId, mapRunStatusToState(run.status));
     lastEventSeqByRunRef.current[run.id] = run.lastEventSeq;
     await loadSession(targetSessionId, false);
   }
@@ -1861,7 +2202,7 @@ export function ChatShell({
     void submitActiveMessage();
   }
 
-  async function abortSession() {
+  const abortSession = useCallback(async () => {
     if (!activeSessionId) {
       return;
     }
@@ -1869,10 +2210,10 @@ export function ChatShell({
     shouldStickMessagesToBottomRef.current = false;
     setShowScrollToBottom(false);
     await fetch(`/api/sessions/${activeSessionId}/abort`, { method: "POST" });
-    setRunStateBySession((current) => ({ ...current, [activeSessionId]: "aborted" }));
-  }
+    setSessionRunState(activeSessionId, "aborted");
+  }, [activeSessionId, setSessionRunState]);
 
-  function handleMessagesScroll() {
+  const handleMessagesScroll = useCallback(() => {
     if (isProgrammaticMessagesScrollRef.current || !loading) {
       return;
     }
@@ -1885,14 +2226,42 @@ export function ChatShell({
 
     shouldStickMessagesToBottomRef.current = true;
     setShowScrollToBottom(false);
-  }
+  }, [isNearMessagesBottom, loading]);
 
-  function handleScrollToBottomClick() {
+  const handleScrollToBottomClick = useCallback(() => {
     shouldSnapMessagesToBottomRef.current = true;
     shouldStickMessagesToBottomRef.current = loading;
     setShowScrollToBottom(false);
     syncMessagesToBottom("smooth");
-  }
+  }, [loading, syncMessagesToBottom]);
+
+  const handleCloseDrawer = useCallback(() => {
+    setDrawerOpen(false);
+  }, []);
+
+  const handleOpenDrawer = useCallback(() => {
+    setDrawerOpen(true);
+  }, []);
+
+  const handleCollapseSidebar = useCallback(() => {
+    setIsSidebarCollapsed(true);
+  }, []);
+
+  const handleExpandSidebar = useCallback(() => {
+    setIsSidebarCollapsed(false);
+  }, []);
+
+  const handleCreateSessionClick = useCallback(() => {
+    void createSession();
+  }, [createSession]);
+
+  const handleSelectSession = useCallback((sessionId: string) => {
+    void selectSession(sessionId);
+  }, [selectSession]);
+
+  const handleLoadMoreSessions = useCallback(() => {
+    void loadMoreSessions();
+  }, [loadMoreSessions]);
 
   return (
     <div className="relative grid h-full min-h-0 gap-1.5 lg:grid-cols-[auto_minmax(0,1fr)]">
@@ -1905,150 +2274,24 @@ export function ChatShell({
         />
       ) : null}
 
-      <aside
-        className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-white/8 bg-[#120f0df7] shadow-[0_25px_80px_rgba(0,0,0,0.5)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
-          drawerOpen ? "translate-x-0" : "-translate-x-[108%] lg:translate-x-0"
-        } ${isSidebarCollapsed ? "lg:w-[3.5rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
-      >
-        <div className="border-b border-white/8 px-2 py-1.5 sm:px-2.5">
-          {isSidebarCollapsed ? (
-            <div className="hidden justify-center lg:flex">
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(false)}
-                className="inline-flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
-                aria-label="Expand sidebar"
-                title="Expand sidebar"
-              >
-                <SidebarToggleIcon collapsed />
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-medium text-stone-100">{user.openclawAgentId}</p>
-                  <p className="mt-0.5 truncate text-[10px] text-stone-500">{user.username}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsSidebarCollapsed(true)}
-                    className="hidden size-8 items-center justify-center rounded-full border border-white/10 text-xs text-stone-300 transition hover:border-amber-400 hover:text-amber-100 lg:inline-flex"
-                    aria-label="Collapse sidebar"
-                    title="Collapse sidebar"
-                  >
-                    <SidebarToggleIcon collapsed={false} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(false)}
-                    className="rounded-full border border-white/10 px-2.5 py-1.5 text-xs text-stone-300 lg:hidden"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={createSession}
-                  className="min-w-0 flex-1 rounded-[0.7rem] border border-amber-300/20 bg-amber-400 px-2.5 py-1.5 text-[11px] font-semibold text-stone-950 transition hover:bg-amber-300"
-                >
-                  New
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div
-          ref={sessionsScrollerRef}
-          className={`min-h-0 flex-1 overflow-y-auto py-1.5 ${isSidebarCollapsed ? "px-1" : "px-1.5"}`}
-        >
-          <div className="space-y-1">
-            {sessions.map((session) => {
-              const isActive = session.id === activeSessionId;
-              const runState = runStateBySession[session.id] ?? mapRunStatusToState(session.activeRun?.status);
-              const isBusy = isRunBusy(runState);
-
-              return (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => void selectSession(session.id)}
-                  onDoubleClick={() => openRenameModal(session)}
-                  title={isSidebarCollapsed ? session.title : undefined}
-                  className={`w-full rounded-[0.75rem] border text-left transition ${
-                    isSidebarCollapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
-                  } ${
-                    isActive
-                      ? "border-amber-400/70 bg-amber-400/10"
-                      : "border-white/8 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {isSidebarCollapsed ? (
-                    <div className="flex items-center justify-center">
-                      <span className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-semibold uppercase text-stone-200">
-                        {session.title.slice(0, 1)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-medium text-stone-100">{session.title}</p>
-                      {isBusy ? (
-                        <span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-100">
-                          Live
-                        </span>
-                      ) : null}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-            <div ref={loadMoreSentinelRef} className="h-2 w-full" />
-            {isSidebarCollapsed ? null : (
-              <div className="px-1 py-1 text-center text-[10px] text-stone-500">
-                {loadingMore ? (
-                  <span>Loading…</span>
-                ) : loadMoreError ? (
-                  <button
-                    type="button"
-                    onClick={() => void loadMoreSessions()}
-                    className="text-stone-300 transition hover:text-amber-100"
-                  >
-                    Retry loading
-                  </button>
-                ) : hasMore ? null : sessions.length ? (
-                  <span>No more sessions</span>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {isSidebarCollapsed ? null : (
-          <div className="border-t border-white/8 px-2 py-1.5 sm:px-2.5">
-            <div className="grid grid-cols-2 gap-1.5">
-              {user.role === "ADMIN" ? (
-                <Link
-                  href="/admin"
-                  className="inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400 hover:text-amber-100"
-                >
-                  Admin
-                </Link>
-              ) : (
-                <span className="hidden" aria-hidden="true" />
-              )}
-              <LogoutButton
-                className={`inline-flex h-8 items-center justify-center rounded-[0.7rem] border border-white/10 px-2.5 text-[11px] font-medium text-stone-300 transition hover:border-amber-400/80 hover:text-amber-200 ${
-                  user.role === "ADMIN" ? "" : "col-span-2"
-                }`}
-              />
-            </div>
-          </div>
-        )}
-      </aside>
+      <ChatSidebar
+        drawerOpen={drawerOpen}
+        isSidebarCollapsed={isSidebarCollapsed}
+        user={user}
+        sidebarSessions={sidebarSessions}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        loadMoreError={loadMoreError}
+        sessionsScrollerRef={sessionsScrollerRef}
+        loadMoreSentinelRef={loadMoreSentinelRef}
+        onCloseDrawer={handleCloseDrawer}
+        onCollapseSidebar={handleCollapseSidebar}
+        onExpandSidebar={handleExpandSidebar}
+        onCreateSession={handleCreateSessionClick}
+        onSelectSession={handleSelectSession}
+        onOpenRenameModal={openRenameModal}
+        onLoadMoreSessions={handleLoadMoreSessions}
+      />
 
       <section
         aria-label={`Chat workspace for ${user.openclawAgentId}`}
@@ -2058,7 +2301,7 @@ export function ChatShell({
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={handleOpenDrawer}
               className="rounded-full border border-white/10 px-2.5 py-1.5 text-xs text-stone-300 lg:hidden"
             >
               Sessions
@@ -2121,131 +2364,16 @@ export function ChatShell({
               </div>
             ) : null}
 
-            {renderableMessages.map((item) => {
-              const run = item.kind === "message" ? item.run : item.run;
-              const isUser = item.kind === "message" && item.message.role === "USER";
-              const content = item.kind === "message" ? item.message.content : item.run.draftAssistantContent;
-              const createdAt = item.kind === "message" ? item.message.createdAt : item.run.updatedAt;
-              const attachments = item.kind === "message" ? item.message.attachments : [];
-              const assistantBlocks =
-                !isUser
-                  ? buildRenderableAssistantBlocks({
-                      content,
-                      run,
-                      segmentation: run ? contentSegmentsByRunId[run.runId] ?? null : null,
-                    })
-                  : [];
-
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
-                    isUser
-                      ? "ml-auto w-fit max-w-[min(100%,44rem)] border-amber-300/30 bg-amber-400 text-stone-950"
-                      : "w-full max-w-[min(124ch,100%)] border-white/8 bg-black/25 text-stone-100"
-                  }`}
-                >
-                  <div>
-                    {isUser ? (
-                      <MessageBody content={content} isUser />
-                    ) : (
-                      <div className="space-y-3">
-                        {assistantBlocks.map((block) => {
-                          if (block.kind === "markdown_text") {
-                            return (
-                              <AssistantTextBlock
-                                key={block.key}
-                                content={block.content}
-                                streaming={block.streaming}
-                              />
-                            );
-                          }
-
-                          if (block.kind === "tool_step") {
-                            return (
-                              <AssistantToolCard
-                                key={block.key}
-                                entry={block.entry}
-                                streaming={block.streaming}
-                              />
-                            );
-                          }
-
-                          return (
-                            <AssistantLifecycleNote
-                              key={block.key}
-                              entry={block.entry}
-                              streaming={block.streaming}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                    {attachments.length ? (
-                      <div
-                        className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
-                          isUser ? "border-stone-950/12" : "border-white/8"
-                        }`}
-                      >
-                        {attachments.map((attachment) => (
-                          <AttachmentBadge
-                            key={attachment.id}
-                            attachment={attachment}
-                            tone={isUser ? "user-message" : "assistant-message"}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <p className={`mt-1 text-[10px] ${isUser ? "text-stone-700" : "text-stone-500"}`}>
-                    {formatRelativeDate(createdAt)}
-                  </p>
-                </div>
-              );
-            })}
+            {renderableMessages.map((item) => (
+              <ChatMessageItem
+                key={item.id}
+                item={item}
+                segmentation={item.run ? contentSegmentsByRunId[item.run.runId] ?? null : null}
+              />
+            ))}
 
             {activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? (
-              <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-white/8 bg-black/25 px-2 py-1.75 text-stone-100 sm:px-3 sm:py-2">
-                <div>
-                  <div className="space-y-3">
-                    {activeRunBlocks.map((block) => {
-                      if (block.kind === "markdown_text") {
-                        return (
-                          <AssistantTextBlock
-                            key={block.key}
-                            content={block.content}
-                            streaming={block.streaming}
-                          />
-                        );
-                      }
-
-                      if (block.kind === "tool_step") {
-                        return (
-                          <AssistantToolCard
-                            key={block.key}
-                            entry={block.entry}
-                            streaming={block.streaming}
-                          />
-                        );
-                      }
-
-                      return (
-                        <AssistantLifecycleNote
-                          key={block.key}
-                          entry={block.entry}
-                          streaming={block.streaming}
-                        />
-                      );
-                    })}
-                    {activeRunBlocks.length === 0 ? (
-                      <div className="flex items-center text-sm text-stone-400">
-                        <StreamingSpinner />
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <p className="mt-1 text-[10px] text-stone-500">{formatRelativeDate(activeRun.updatedAt)}</p>
-              </div>
+              <ActiveRunPanel activeRun={activeRun} activeRunBlocks={activeRunBlocks} />
             ) : null}
           </div>
         </div>
