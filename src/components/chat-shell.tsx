@@ -52,6 +52,7 @@ type SessionRun = {
 type Session = {
   id: string;
   title: string;
+  status: "ACTIVE" | "ARCHIVED";
   updatedAt: string;
   lastMessageAt: string | null;
   activeRun: SessionRun | null;
@@ -934,8 +935,8 @@ const ChatSidebar = memo(function ChatSidebar({
   drawerOpen,
   isSidebarCollapsed,
   user,
-  sidebarSessions,
-  hasMore,
+  recentSessions,
+  archivedSessions,
   loadingMore,
   loadMoreError,
   sessionsScrollerRef,
@@ -953,8 +954,8 @@ const ChatSidebar = memo(function ChatSidebar({
   drawerOpen: boolean;
   isSidebarCollapsed: boolean;
   user: UserShape;
-  sidebarSessions: Array<{ session: Session; isActive: boolean; isBusy: boolean }>;
-  hasMore: boolean;
+  recentSessions: Array<{ session: Session; isActive: boolean; isBusy: boolean }>;
+  archivedSessions: Array<{ session: Session; isActive: boolean; isBusy: boolean }>;
   loadingMore: boolean;
   loadMoreError: string | null;
   sessionsScrollerRef: RefObject<HTMLDivElement | null>;
@@ -967,6 +968,163 @@ const ChatSidebar = memo(function ChatSidebar({
   onOpenRenameModal: (session: Session) => void;
   onLoadMoreSessions: () => void;
 }) {
+  const GROUP_PAGE_SIZE = 8;
+  const collapsedSessions = [...recentSessions, ...archivedSessions];
+  const [recentExpanded, setRecentExpanded] = useState(true);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [recentVisibleCount, setRecentVisibleCount] = useState(GROUP_PAGE_SIZE);
+  const [archivedVisibleCount, setArchivedVisibleCount] = useState(GROUP_PAGE_SIZE);
+  const activeRecentIndex = recentSessions.findIndex(({ isActive }) => isActive);
+  const activeArchivedIndex = archivedSessions.findIndex(({ isActive }) => isActive);
+  const effectiveRecentVisibleCount = Math.max(
+    recentVisibleCount,
+    activeRecentIndex >= 0 ? activeRecentIndex + 1 : 0,
+    GROUP_PAGE_SIZE,
+  );
+  const effectiveArchivedVisibleCount = Math.max(
+    archivedVisibleCount,
+    activeArchivedIndex >= 0 ? activeArchivedIndex + 1 : 0,
+    GROUP_PAGE_SIZE,
+  );
+  const visibleRecentSessions = recentSessions.slice(0, effectiveRecentVisibleCount);
+  const visibleArchivedSessions = archivedSessions.slice(0, effectiveArchivedVisibleCount);
+  const recentHasMore = recentSessions.length > effectiveRecentVisibleCount;
+  const archivedHasMore = archivedSessions.length > effectiveArchivedVisibleCount;
+
+  useEffect(() => {
+    if (activeRecentIndex < 0) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setRecentExpanded(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeRecentIndex]);
+
+  useEffect(() => {
+    if (activeArchivedIndex < 0) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setArchivedExpanded(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeArchivedIndex]);
+
+  const renderSessionButton = (
+    { session, isActive, isBusy }: { session: Session; isActive: boolean; isBusy: boolean },
+    options?: { collapsed?: boolean },
+  ) => {
+    const collapsed = options?.collapsed ?? false;
+
+    return (
+      <button
+        key={session.id}
+        type="button"
+        onClick={() => onSelectSession(session.id)}
+        onDoubleClick={() => {
+          if (session.status === "ACTIVE") {
+            onOpenRenameModal(session);
+          }
+        }}
+        title={collapsed ? session.title : undefined}
+        className={`w-full rounded-[0.75rem] border text-left transition ${
+          collapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
+        } ${
+          isActive
+            ? "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]"
+            : "border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.68)] hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-panel-strong)]"
+        } ${session.status === "ARCHIVED" ? "opacity-80" : ""}`}
+      >
+        {collapsed ? (
+          <div className="flex items-center justify-center">
+            <span className="ui-badge-strong flex size-7 items-center justify-center rounded-full text-[11px] font-semibold uppercase">
+              {session.title.slice(0, 1)}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-xs font-medium text-[color:var(--text-primary)]">{session.title}</p>
+            {isBusy ? (
+              <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+                {messages.chat.live}
+              </span>
+            ) : session.status === "ARCHIVED" ? (
+              <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+                {messages.chat.readOnly}
+              </span>
+            ) : null}
+          </div>
+        )}
+      </button>
+    );
+  };
+
+  const renderSectionHeader = ({
+    title,
+    count,
+    expanded,
+    onToggle,
+  }: {
+    title: string;
+    count: number;
+    expanded: boolean;
+    onToggle: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center justify-between rounded-[0.65rem] px-1 py-1 text-left transition hover:bg-[color:var(--surface-subtle)]"
+      aria-expanded={expanded}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-quaternary)]">
+        {title}
+      </span>
+      <span className="flex items-center gap-1 text-[10px] text-[color:var(--text-quaternary)]">
+        <span>{count}</span>
+        <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+      </span>
+    </button>
+  );
+
+  const renderSectionFooter = ({
+    expanded,
+    totalCount,
+    hasMore,
+    onShowMore,
+  }: {
+    expanded: boolean;
+    totalCount: number;
+    hasMore: boolean;
+    onShowMore: () => void;
+  }) => {
+    if (!expanded || totalCount === 0) {
+      return null;
+    }
+
+    return (
+      <div className="px-1 pt-1 text-center">
+        {hasMore ? (
+          <button
+            type="button"
+            onClick={onShowMore}
+            className="w-full text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
+          >
+            <span className="text-[9px]">{messages.chat.showMore}</span>
+          </button>
+        ) : totalCount > GROUP_PAGE_SIZE ? (
+          <div className="w-full text-[color:var(--text-quaternary)]">
+            <span className="text-[9px]">{messages.chat.noMoreSessions}</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <aside
       className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.96)] shadow-[var(--shadow-panel)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
@@ -1032,39 +1190,42 @@ const ChatSidebar = memo(function ChatSidebar({
         className={`min-h-0 flex-1 overflow-y-auto py-1.5 ${isSidebarCollapsed ? "px-1" : "px-1.5"}`}
       >
         <div className="space-y-1">
-          {sidebarSessions.map(({ session, isActive, isBusy }) => (
-            <button
-              key={session.id}
-              type="button"
-              onClick={() => onSelectSession(session.id)}
-              onDoubleClick={() => onOpenRenameModal(session)}
-              title={isSidebarCollapsed ? session.title : undefined}
-              className={`w-full rounded-[0.75rem] border text-left transition ${
-                isSidebarCollapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
-              } ${
-                isActive
-                  ? "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]"
-                  : "border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.68)] hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-panel-strong)]"
-              }`}
-            >
-              {isSidebarCollapsed ? (
-                <div className="flex items-center justify-center">
-                  <span className="ui-badge-strong flex size-7 items-center justify-center rounded-full text-[11px] font-semibold uppercase">
-                    {session.title.slice(0, 1)}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-medium text-[color:var(--text-primary)]">{session.title}</p>
-                  {isBusy ? (
-                    <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
-                      {messages.chat.live}
-                    </span>
-                  ) : null}
-                </div>
-              )}
-            </button>
-          ))}
+          {isSidebarCollapsed ? (
+            collapsedSessions.map((item) => renderSessionButton(item, { collapsed: true }))
+          ) : (
+            <>
+              <div className="pt-1">
+                {renderSectionHeader({
+                  title: messages.chat.recentSessions,
+                  count: recentSessions.length,
+                  expanded: recentExpanded,
+                  onToggle: () => setRecentExpanded((current) => !current),
+                })}
+              </div>
+              {recentExpanded ? visibleRecentSessions.map((item) => renderSessionButton(item)) : null}
+              {renderSectionFooter({
+                expanded: recentExpanded,
+                totalCount: recentSessions.length,
+                hasMore: recentHasMore,
+                onShowMore: () => setRecentVisibleCount((current) => current + GROUP_PAGE_SIZE),
+              })}
+              <div className="pt-2">
+                {renderSectionHeader({
+                  title: messages.chat.archivedSessions,
+                  count: archivedSessions.length,
+                  expanded: archivedExpanded,
+                  onToggle: () => setArchivedExpanded((current) => !current),
+                })}
+              </div>
+              {archivedExpanded ? visibleArchivedSessions.map((item) => renderSessionButton(item)) : null}
+              {renderSectionFooter({
+                expanded: archivedExpanded,
+                totalCount: archivedSessions.length,
+                hasMore: archivedHasMore,
+                onShowMore: () => setArchivedVisibleCount((current) => current + GROUP_PAGE_SIZE),
+              })}
+            </>
+          )}
           <div ref={loadMoreSentinelRef} className="h-2 w-full" />
           {isSidebarCollapsed ? null : (
             <div className="px-1 py-1 text-center text-[10px] text-[color:var(--text-quaternary)]">
@@ -1078,8 +1239,6 @@ const ChatSidebar = memo(function ChatSidebar({
                 >
                   {messages.chat.retryLoading}
                 </button>
-              ) : hasMore ? null : sidebarSessions.length ? (
-                <span>{messages.chat.noMoreSessions}</span>
               ) : null}
             </div>
           )}
@@ -1230,6 +1389,7 @@ export function ChatShell({
   const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
   const error = activeSessionId ? errorBySession[activeSessionId] ?? null : null;
   const pairing = activeSessionId ? pairingBySession[activeSessionId] ?? null : null;
+  const activeSessionReadOnly = activeSession?.status === "ARCHIVED";
   const activeRunHistory = useMemo(
     () => (activeRun ? runHistory.find((item) => item.runId === activeRun.id) ?? null : null),
     [activeRun, runHistory],
@@ -1317,6 +1477,14 @@ export function ChatShell({
         isBusy: isRunBusy(runStateBySession[session.id] ?? mapRunStatusToState(session.activeRun?.status)),
       })),
     [activeSessionId, runStateBySession, sessions],
+  );
+  const recentSidebarSessions = useMemo(
+    () => sidebarSessions.filter(({ session }) => session.status === "ACTIVE"),
+    [sidebarSessions],
+  );
+  const archivedSidebarSessions = useMemo(
+    () => sidebarSessions.filter(({ session }) => session.status === "ARCHIVED"),
+    [sidebarSessions],
   );
   const activeSessionLoaded = activeSessionId ? (loadedSessionIds[activeSessionId] ?? false) : true;
   const activeSessionHasRenderableContent =
@@ -1858,9 +2026,18 @@ export function ChatShell({
       };
 
       setSessions((current) => {
-        const seen = new Set(current.map((session) => session.id));
-        const incoming = payload.sessions.filter((session) => !seen.has(session.id));
-        return [...current, ...incoming];
+        const incomingById = new Map(payload.sessions.map((session) => [session.id, session]));
+        const next = current.map((session) => incomingById.get(session.id) ?? session);
+        const seen = new Set(next.map((session) => session.id));
+
+        for (const session of payload.sessions) {
+          if (!seen.has(session.id)) {
+            next.push(session);
+            seen.add(session.id);
+          }
+        }
+
+        return next;
       });
       setHasMore(payload.pageInfo.hasMore);
       setNextCursor(payload.pageInfo.nextCursor);
@@ -2035,7 +2212,7 @@ export function ChatShell({
   }, [activeSessionId, localeFetch, messages.chat.failedToCreateSession, syncSessionUrl, updateActiveRun, updateSessionSummary, setDrawerOpen, setSessionRunState]);
 
   const openRenameModal = useCallback((session: Session) => {
-    if (isSidebarCollapsed) {
+    if (isSidebarCollapsed || session.status === "ARCHIVED") {
       return;
     }
 
@@ -2110,7 +2287,7 @@ export function ChatShell({
   }
 
   async function uploadFiles(files: FileList | null) {
-    if (!files?.length || !activeSessionId) {
+    if (!files?.length || !activeSessionId || activeSessionReadOnly) {
       return;
     }
 
@@ -2149,7 +2326,7 @@ export function ChatShell({
   }
 
   async function submitActiveMessage() {
-    if (!activeSessionId || loading) {
+    if (!activeSessionId || loading || activeSessionReadOnly) {
       return;
     }
 
@@ -2380,8 +2557,8 @@ export function ChatShell({
         drawerOpen={drawerOpen}
         isSidebarCollapsed={isSidebarCollapsed}
         user={user}
-        sidebarSessions={sidebarSessions}
-        hasMore={hasMore}
+        recentSessions={recentSidebarSessions}
+        archivedSessions={archivedSidebarSessions}
         loadingMore={loadingMore}
         loadMoreError={loadMoreError}
         sessionsScrollerRef={sessionsScrollerRef}
@@ -2500,6 +2677,11 @@ export function ChatShell({
                 </div>
               ) : null}
               <form onSubmit={sendMessage} className="px-0.5 py-0.5">
+                {activeSessionReadOnly ? (
+                  <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
+                    {messages.chat.archivedReadOnlyNotice}
+                  </p>
+                ) : null}
                 <textarea
                   ref={composerTextareaRef}
                   value={text}
@@ -2512,9 +2694,13 @@ export function ChatShell({
                   }}
                   onKeyDown={handleComposerKeyDown}
                   rows={2}
-                  placeholder={messages.chat.messagePlaceholder}
+                  placeholder={
+                    activeSessionReadOnly
+                      ? messages.chat.archivedMessagePlaceholder
+                      : messages.chat.messagePlaceholder
+                  }
                   className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
-                  disabled={!activeSessionId || loading}
+                  disabled={!activeSessionId || loading || activeSessionReadOnly}
                 />
                 <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
                   <div className="min-w-0 flex flex-wrap items-center gap-1">
@@ -2523,7 +2709,7 @@ export function ChatShell({
                         type="file"
                         className="hidden"
                         multiple
-                        disabled={!activeSessionId || uploading || loading}
+                        disabled={!activeSessionId || uploading || loading || activeSessionReadOnly}
                         onChange={(event) => {
                           void uploadFiles(event.target.files);
                           event.target.value = "";
@@ -2532,7 +2718,15 @@ export function ChatShell({
                       {uploading ? messages.chat.uploading : messages.chat.attach}
                     </label>
                   </div>
-                  {loading ? (
+                  {activeSessionReadOnly ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                    >
+                      {messages.chat.readOnly}
+                    </button>
+                  ) : loading ? (
                     <button
                       type="button"
                       onClick={() => {
