@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { memo } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
@@ -29,11 +29,45 @@ type Attachment = {
   size: number;
 };
 
+type SelectedSkill = {
+  key: string;
+  name: string;
+  source: string;
+  bundled: boolean;
+};
+
+type SkillInstallItem = {
+  id: string;
+  kind: string;
+  label: string;
+  bins: string[];
+};
+
+type Skill = {
+  key: string;
+  name: string;
+  description: string;
+  source: string;
+  bundled: boolean;
+  eligible: boolean;
+  disabled: boolean;
+  blockedByAllowlist: boolean;
+  missing: {
+    bins: string[];
+    anyBins: string[];
+    env: string[];
+    config: string[];
+    os: string[];
+  };
+  install: SkillInstallItem[];
+};
+
 type Message = {
   id: string;
   role: "USER" | "ASSISTANT" | "SYSTEM";
   content: string;
   createdAt: string;
+  skills: SelectedSkill[];
   attachments: Attachment[];
 };
 
@@ -158,6 +192,40 @@ function formatFileSize(size: number) {
   }
 
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function compareSkills(left: Skill, right: Skill) {
+  if (left.eligible !== right.eligible) {
+    return left.eligible ? -1 : 1;
+  }
+
+  const leftPersonal = left.source === "agents-skills-personal";
+  const rightPersonal = right.source === "agents-skills-personal";
+  if (leftPersonal !== rightPersonal) {
+    return leftPersonal ? -1 : 1;
+  }
+
+  if (left.bundled !== right.bundled) {
+    return left.bundled ? -1 : 1;
+  }
+
+  return left.name.localeCompare(right.name, "en");
+}
+
+function getSkillStatus(messages: Dictionary, skill: Skill) {
+  if (skill.disabled) {
+    return messages.chat.skillDisabled;
+  }
+
+  if (skill.blockedByAllowlist) {
+    return messages.chat.skillBlocked;
+  }
+
+  if (!skill.eligible) {
+    return messages.chat.skillMissing;
+  }
+
+  return messages.chat.skillAvailable;
 }
 
 function mapRunStatusToState(status: SessionRun["status"] | undefined | null): RunState {
@@ -703,6 +771,91 @@ function AttachmentBadge({
   );
 }
 
+function SkillBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="ui-badge rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]">
+      {children}
+    </span>
+  );
+}
+
+function SelectedSkillBadge({
+  skill,
+  messages,
+  tone = "composer",
+  onRemove,
+}: {
+  skill: SelectedSkill;
+  messages: Dictionary;
+  tone?: "composer" | "user-message";
+  onRemove?: (skillKey: string) => void;
+}) {
+  const styles =
+    tone === "user-message"
+      ? "border-[rgba(14,116,144,0.18)] bg-[#cffafe] text-[#164e63]"
+      : "border-[rgba(14,116,144,0.14)] bg-[#ecfeff] text-[#155e75]";
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-[0.9rem] border px-2.5 py-1.5 text-[10px] leading-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] sm:px-3 sm:text-[11px] ${styles}`}
+    >
+      <span aria-hidden="true" className="shrink-0 opacity-80">
+        <WrenchIcon />
+      </span>
+      <span className="truncate font-semibold">{skill.name}</span>
+      {tone === "composer" && onRemove ? (
+        <button
+          type="button"
+          onClick={() => onRemove(skill.key)}
+          aria-label={`${messages.common.cancel} ${skill.name}`}
+          className="inline-flex size-4 shrink-0 items-center justify-center text-[0.8em] leading-none opacity-70 transition-opacity hover:opacity-100"
+        >
+          <CloseIcon />
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+function SkillListItemCard({
+  skill,
+  messages,
+  selected = false,
+  onToggle,
+}: {
+  skill: Skill;
+  messages: Dictionary;
+  selected?: boolean;
+  onToggle?: (skill: Skill) => void;
+}) {
+  const selectable = skill.eligible && !skill.disabled && !skill.blockedByAllowlist;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle?.(skill)}
+      disabled={!selectable}
+      className={`block w-full rounded-[0.8rem] border px-3 py-2.5 text-left transition-colors ${
+        selected
+          ? "border-[rgba(14,116,144,0.28)] bg-[#ecfeff]"
+          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)]"
+      } ${!selectable ? "cursor-not-allowed opacity-70" : ""}`}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="text-xs font-semibold text-[color:var(--text-primary)]">{skill.name}</p>
+        {selected ? <SkillBadge>{messages.chat.skillSelected}</SkillBadge> : null}
+        <SkillBadge>{getSkillStatus(messages, skill)}</SkillBadge>
+        <SkillBadge>{skill.bundled ? "bundled" : skill.source}</SkillBadge>
+      </div>
+      {skill.description ? (
+        <p className="mt-1 overflow-hidden text-[11px] leading-5 text-[color:var(--text-secondary)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+          {skill.description}
+        </p>
+      ) : null}
+    </button>
+  );
+}
+
 function MessageBody({
   content,
   isUser,
@@ -771,6 +924,38 @@ function CloseIcon() {
   );
 }
 
+function WrenchIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 512 468.553"
+      fill="none"
+      className="size-3.5"
+    >
+      <path
+        d="M483.381 151.575H28.619v219.35c0 37.906 31.106 69.009 69.013 69.009h316.736c37.884 0 69.013-31.125 69.013-69.009v-219.35z"
+        fill="currentColor"
+        fillRule="nonzero"
+        opacity="0.12"
+      />
+      <path
+        d="M353.177 122.962l36.214-92.199c.286-.726.621-1.441.999-2.144H284.447l-37.054 94.343h105.784zm62.346-94.331l-37.051 94.331h104.909v-25.33c0-18.947-7.773-36.205-20.295-48.724-12.255-12.258-29.061-19.968-47.563-20.277zM88.36 122.962l36.214-92.199c.287-.726.621-1.441.999-2.144H97.632c-18.963 0-36.218 7.77-48.731 20.282-12.512 12.513-20.282 29.768-20.282 48.731v25.33H88.36zm62.353-94.343l-37.058 94.343h108.681l36.129-91.983c.315-.798.687-1.587 1.116-2.36H150.713z"
+        fill="currentColor"
+        opacity="0.2"
+      />
+      <path
+        d="M97.632 0h316.736C468.073 0 512 43.927 512 97.632v273.293c0 53.682-43.95 97.628-97.632 97.628H97.632C43.927 468.553 0 424.629 0 370.925V97.632C0 43.902 43.902 0 97.632 0zm255.545 122.962l36.214-92.199c.286-.726.621-1.441.999-2.144H284.447l-37.054 94.343h105.784zm62.346-94.331l-37.051 94.331h104.909v-25.33c0-37.462-30.413-68.377-67.858-69.001zM88.36 122.962l36.214-92.199c.287-.726.621-1.441.999-2.144H97.632c-37.929 0-69.013 31.084-69.013 69.013v25.33H88.36zm62.353-94.343l-37.058 94.343h108.681l36.129-91.983c.315-.798.687-1.587 1.116-2.36H150.713zm332.668 122.956H28.619v219.35c0 37.906 31.106 69.009 69.013 69.009h316.736c37.884 0 69.013-31.125 69.013-69.009v-219.35z"
+        stroke="currentColor"
+        strokeWidth="12"
+      />
+      <path
+        d="M321.881 219.266c-1.981-1.97-4.303-2.939-6.986-2.939-2.673 0-5.037.969-6.976 2.939l-10.638 10.607c-5.761-3.716-12.161-6.517-18.657-8.647v-16.315c0-2.747-.937-5.069-2.844-6.986-1.917-1.917-4.238-2.843-6.975-2.843h-20.489c-2.609 0-4.898.927-6.869 2.843-1.948 1.917-2.918 4.239-2.918 6.986v14.941c-6.645 1.544-13.12 3.994-19.094 7.284l-11.788-11.618c-1.843-1.949-4.089-2.96-6.794-2.96-2.705 0-5.027 1.001-6.986 2.96l-14.334 14.355c-1.97 1.981-2.95 4.292-2.95 6.975 0 2.695.98 5.037 2.95 6.986l10.596 10.649c-3.717 5.783-6.475 12.119-8.647 18.647h-16.315c-2.747 0-5.069.937-6.975 2.854-1.917 1.906-2.854 4.228-2.854 6.986v20.468c0 2.609.937 4.898 2.854 6.879 1.906 1.938 4.228 2.918 6.975 2.918h14.941c1.597 6.772 4.068 13.13 7.284 19.285l-11.618 11.576c-1.949 1.842-2.96 4.1-2.96 6.815 0 2.684 1.011 5.016 2.96 6.986l14.355 14.536c1.981 1.842 4.302 2.737 6.986 2.737s5.037-.895 6.975-2.737l10.649-10.808c5.719 3.695 12.194 6.528 18.658 8.646v16.326c0 2.737.926 5.058 2.843 6.975 1.906 1.906 4.238 2.854 6.986 2.854h20.468c2.619 0 4.898-.948 6.869-2.854 1.948-1.917 2.928-4.238 2.928-6.975v-14.941c6.752-1.586 13.152-4.079 19.286-7.284l11.575 11.618c1.853 1.938 4.132 2.95 6.89 2.95 2.79 0 5.059-1.012 6.912-2.95l14.536-14.365c1.842-1.992 2.747-4.303 2.747-6.986 0-2.684-.905-5.027-2.747-6.976l-10.809-10.638c3.706-5.74 6.506-12.172 8.647-18.657h16.314c2.747 0 5.069-.948 6.975-2.854 1.917-1.918 2.854-4.239 2.854-6.976V288.06c0-2.62-.937-4.888-2.854-6.869-1.906-1.959-4.228-2.918-6.975-2.918l-14.93.001c-1.619-6.614-4.047-13.131-7.284-19.105l11.608-11.778c1.948-1.842 2.96-4.1 2.96-6.805 0-2.694-1.001-4.994-2.96-6.975l-14.355-14.344v-.001zm-65.878 26.559c6.855 0 13.32 1.301 19.463 3.89 6.117 2.642 11.428 6.183 15.935 10.65 4.453 4.493 7.994 9.832 10.637 15.921 2.588 6.13 3.89 12.609 3.89 19.45 0 6.867-1.301 13.333-3.89 19.489-2.643 6.09-6.184 11.402-10.637 15.909-4.52 4.48-9.818 8.035-15.935 10.663-6.143 2.575-12.608 3.876-19.463 3.876-6.854 0-13.319-1.301-19.476-3.876-6.077-2.629-11.402-6.183-15.894-10.663-4.481-4.507-8.035-9.819-10.664-15.909-2.588-6.156-3.876-12.622-3.876-19.489 0-6.841 1.288-13.319 3.876-19.45 2.629-6.103 6.183-11.428 10.664-15.921 4.493-4.467 9.818-8.008 15.894-10.65 6.143-2.589 12.622-3.89 19.476-3.89z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function StopSquareIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
@@ -810,6 +995,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   const run = item.run;
   const content = item.kind === "message" ? item.message.content : item.run.draftAssistantContent;
   const createdAt = item.kind === "message" ? item.message.createdAt : item.run.updatedAt;
+  const skills = item.kind === "message" ? item.message.skills : [];
   const attachments = item.kind === "message" ? item.message.attachments : [];
   const assistantBlocks = useMemo(
     () =>
@@ -849,12 +1035,20 @@ const ChatMessageItem = memo(function ChatMessageItem({
             })}
           </div>
         )}
-        {attachments.length ? (
+        {skills.length || attachments.length ? (
           <div
             className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
               isUser ? "border-[rgba(17,24,39,0.12)]" : "border-[color:var(--border-subtle)]"
             }`}
           >
+            {skills.map((skill) => (
+              <SelectedSkillBadge
+                key={skill.key}
+                skill={skill}
+                messages={messages}
+                tone={isUser ? "user-message" : "composer"}
+              />
+            ))}
             {attachments.map((attachment) => (
               <AttachmentBadge
                 key={attachment.id}
@@ -1323,6 +1517,7 @@ export function ChatShell({
   const [contentSegmentsByRunId, setContentSegmentsByRunId] = useState<Record<string, RunContentSegmentation>>({});
   const [composerBySession, setComposerBySession] = useState<Record<string, string>>({});
   const [pendingAttachmentsBySession, setPendingAttachmentsBySession] = useState<Record<string, Attachment[]>>({});
+  const [selectedSkillsBySession, setSelectedSkillsBySession] = useState<Record<string, SelectedSkill[]>>({});
   const [runStateBySession, setRunStateBySession] = useState<Record<string, RunState>>(
     initialActiveSessionId && initialActiveRun
       ? { [initialActiveSessionId]: mapRunStatusToState(initialActiveRun.status) }
@@ -1344,6 +1539,11 @@ export function ChatShell({
   const [renameTitle, setRenameTitle] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillsFetched, setSkillsFetched] = useState(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -1384,6 +1584,7 @@ export function ChatShell({
   );
   const text = activeSessionId ? composerBySession[activeSessionId] ?? "" : "";
   const pendingAttachments = activeSessionId ? pendingAttachmentsBySession[activeSessionId] ?? [] : [];
+  const selectedSkills = activeSessionId ? selectedSkillsBySession[activeSessionId] ?? [] : [];
   const activeRun = activeSessionId ? activeRunBySession[activeSessionId] ?? null : null;
   const loading = activeSessionId ? isRunBusy(runStateBySession[activeSessionId] ?? "idle") : false;
   const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
@@ -1397,6 +1598,13 @@ export function ChatShell({
   const activeRunSegmentation = activeRun ? contentSegmentsByRunId[activeRun.id] ?? null : null;
   const activeStreamingRunId =
     activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? activeRun.id : null;
+  const sortedSkills = useMemo(
+    () =>
+      skills
+        .filter((skill) => skill.eligible && !skill.disabled && !skill.blockedByAllowlist)
+        .sort(compareSkills),
+    [skills],
+  );
   const activeRunBlocks = useMemo(() => {
     if (!activeRun || !["STARTING", "STREAMING"].includes(activeRun.status)) {
       return [];
@@ -2002,6 +2210,50 @@ export function ChatShell({
     renameInputRef.current.select();
   }, [renameSessionId]);
 
+  const loadSkills = useCallback(async (force = false) => {
+    if (skillsLoading || (skillsFetched && !force)) {
+      return;
+    }
+
+    setSkillsLoading(true);
+    setSkillsError(null);
+
+    try {
+      const response = await localeFetch("/api/skills", { cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as {
+        skills?: Skill[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? messages.chat.skillsUnavailable);
+      }
+
+      setSkills(Array.isArray(payload.skills) ? payload.skills : []);
+      setSkillsFetched(true);
+    } catch (loadError) {
+      setSkillsError(loadError instanceof Error ? loadError.message : messages.chat.skillsUnavailable);
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, [localeFetch, messages.chat.skillsUnavailable, skillsFetched, skillsLoading]);
+
+  useEffect(() => {
+    if (!skillsOpen) {
+      return;
+    }
+
+    if (!skillsFetched) {
+      void loadSkills();
+    }
+  }, [loadSkills, skillsFetched, skillsOpen]);
+
+  useEffect(() => {
+    if (!activeSessionId || activeSessionReadOnly) {
+      setSkillsOpen(false);
+    }
+  }, [activeSessionId, activeSessionReadOnly]);
+
   const loadMoreSessions = useCallback(async () => {
     if (loadingMore || !hasMore || !nextCursor) {
       return;
@@ -2202,6 +2454,7 @@ export function ChatShell({
     updateActiveRun(payload.session.id, null);
     setSessionRunState(payload.session.id, "idle");
     setPendingAttachmentsBySession((current) => ({ ...current, [payload.session.id]: [] }));
+    setSelectedSkillsBySession((current) => ({ ...current, [payload.session.id]: [] }));
     setComposerBySession((current) => ({ ...current, [payload.session.id]: "" }));
     setPairingBySession((current) => ({ ...current, [payload.session.id]: null }));
     setShowScrollToBottom(false);
@@ -2333,13 +2586,15 @@ export function ChatShell({
     const currentText = composerBySession[activeSessionId] ?? "";
     const trimmedText = currentText.trim();
     const selectedAttachments = pendingAttachmentsBySession[activeSessionId] ?? [];
+    const selectedSkillSnapshots = selectedSkillsBySession[activeSessionId] ?? [];
 
-    if (!trimmedText && selectedAttachments.length === 0) {
+    if (!trimmedText && selectedAttachments.length === 0 && selectedSkillSnapshots.length === 0) {
       return;
     }
 
     const inputText = trimmedText ? currentText : "";
     const attachmentIds = selectedAttachments.map((attachment) => attachment.id);
+    const skillKeys = selectedSkillSnapshots.map((skill) => skill.key);
     const clientRequestId = uuidv4();
     const targetSessionId = activeSessionId;
     const optimisticRun: SessionRun = {
@@ -2359,6 +2614,7 @@ export function ChatShell({
       clientRequestId,
       textLength: inputText.length,
       attachmentCount: selectedAttachments.length,
+      skillCount: selectedSkillSnapshots.length,
     });
 
     setMessagesBySession((current) => ({
@@ -2370,12 +2626,14 @@ export function ChatShell({
           role: "USER",
           content: inputText,
           createdAt: new Date().toISOString(),
+          skills: selectedSkillSnapshots,
           attachments: selectedAttachments,
         },
       ],
     }));
     setComposerBySession((current) => ({ ...current, [targetSessionId]: "" }));
     setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: [] }));
+    setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: [] }));
     setSessionRunState(targetSessionId, "starting");
     setErrorBySession((current) => ({ ...current, [targetSessionId]: null }));
     setPairingBySession((current) => ({ ...current, [targetSessionId]: null }));
@@ -2390,6 +2648,7 @@ export function ChatShell({
       body: JSON.stringify({
         message: inputText,
         attachmentIds,
+        skillKeys,
         clientRequestId,
       }),
     }).catch((fetchError) => fetchError);
@@ -2404,6 +2663,7 @@ export function ChatShell({
       setErrorBySession((current) => ({ ...current, [targetSessionId]: response.message }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
+      setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: selectedSkillSnapshots }));
       await loadSession(targetSessionId, false);
       return;
     }
@@ -2430,6 +2690,7 @@ export function ChatShell({
       setErrorBySession((current) => ({ ...current, [targetSessionId]: errorMessage }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
+      setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: selectedSkillSnapshots }));
       await loadSession(targetSessionId, false);
       return;
     }
@@ -2539,6 +2800,60 @@ export function ChatShell({
   const handleLoadMoreSessions = useCallback(() => {
     void loadMoreSessions();
   }, [loadMoreSessions]);
+
+  const handleToggleSkills = useCallback(() => {
+    if (!activeSessionId || uploading || loading || activeSessionReadOnly) {
+      return;
+    }
+
+    setSkillsOpen((current) => !current);
+  }, [activeSessionId, activeSessionReadOnly, loading, uploading]);
+
+  const handleRetryLoadSkills = useCallback(() => {
+    void loadSkills(true);
+  }, [loadSkills]);
+
+  const handleToggleSkillSelection = useCallback((skill: Skill) => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    setSelectedSkillsBySession((current) => {
+      const sessionSkills = current[activeSessionId] ?? [];
+      const existing = sessionSkills.find((item) => item.key === skill.key);
+
+      if (existing) {
+        return {
+          ...current,
+          [activeSessionId]: sessionSkills.filter((item) => item.key !== skill.key),
+        };
+      }
+
+      return {
+        ...current,
+        [activeSessionId]: [
+          ...sessionSkills,
+          {
+            key: skill.key,
+            name: skill.name,
+            source: skill.source,
+            bundled: skill.bundled,
+          },
+        ],
+      };
+    });
+  }, [activeSessionId]);
+
+  const handleRemoveSelectedSkill = useCallback((skillKey: string) => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    setSelectedSkillsBySession((current) => ({
+      ...current,
+      [activeSessionId]: (current[activeSessionId] ?? []).filter((skill) => skill.key !== skillKey),
+    }));
+  }, [activeSessionId]);
 
   return (
     <div className="relative grid h-full min-h-0 gap-1.5 lg:grid-cols-[auto_minmax(0,1fr)]">
@@ -2676,6 +2991,78 @@ export function ChatShell({
                   ))}
                 </div>
               ) : null}
+              {selectedSkills.length ? (
+                <div className="mb-1.5 flex flex-wrap gap-1">
+                  {selectedSkills.map((skill) => (
+                    <SelectedSkillBadge
+                      key={skill.key}
+                      skill={skill}
+                      messages={messages}
+                      tone="composer"
+                      onRemove={handleRemoveSelectedSkill}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {skillsOpen ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label={messages.common.cancel}
+                    onClick={() => setSkillsOpen(false)}
+                    className="ui-overlay fixed inset-0 z-20 sm:hidden"
+                  />
+                  <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden">
+                    <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
+                        <button
+                          type="button"
+                          onClick={() => setSkillsOpen(false)}
+                          className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
+                        >
+                          {messages.common.cancel}
+                        </button>
+                      </div>
+
+                      {skillsLoading ? (
+                        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
+                      ) : null}
+
+                      {!skillsLoading && skillsError ? (
+                        <div className="rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
+                          <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
+                          <button
+                            type="button"
+                            onClick={handleRetryLoadSkills}
+                            className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                          >
+                            {messages.chat.retryLoadSkills}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
+                        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
+                      ) : null}
+
+                      {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
+                        <div className="max-h-[min(18rem,42vh)] space-y-2 overflow-y-auto pr-0.5">
+                          {sortedSkills.map((skill) => (
+                            <SkillListItemCard
+                              key={skill.key}
+                              skill={skill}
+                              messages={messages}
+                              selected={selectedSkills.some((item) => item.key === skill.key)}
+                              onToggle={handleToggleSkillSelection}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              ) : null}
               <form onSubmit={sendMessage} className="px-0.5 py-0.5">
                 {activeSessionReadOnly ? (
                   <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
@@ -2717,6 +3104,71 @@ export function ChatShell({
                       />
                       {uploading ? messages.chat.uploading : messages.chat.attach}
                     </label>
+                    <div className="relative">
+                      {skillsOpen ? (
+                        <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(24rem,33vw)]">
+                          <div className="relative rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
+                            <span
+                              aria-hidden="true"
+                              className="absolute bottom-[-0.35rem] left-5 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
+                            />
+                            <div className="relative flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
+                              <button
+                                type="button"
+                                onClick={() => setSkillsOpen(false)}
+                                className="ui-button-secondary rounded-full px-2 py-1 text-[10px]"
+                              >
+                                {messages.common.cancel}
+                              </button>
+                            </div>
+
+                            {skillsLoading ? (
+                              <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
+                            ) : null}
+
+                            {!skillsLoading && skillsError ? (
+                              <div className="mt-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
+                                <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
+                                <button
+                                  type="button"
+                                  onClick={handleRetryLoadSkills}
+                                  className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                                >
+                                  {messages.chat.retryLoadSkills}
+                                </button>
+                              </div>
+                            ) : null}
+
+                            {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
+                              <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
+                            ) : null}
+
+                            {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
+                              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-0.5">
+                                {sortedSkills.map((skill) => (
+                                  <SkillListItemCard
+                                    key={skill.key}
+                                    skill={skill}
+                                    messages={messages}
+                                    selected={selectedSkills.some((item) => item.key === skill.key)}
+                                    onToggle={handleToggleSkillSelection}
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleToggleSkills}
+                        disabled={!activeSessionId || uploading || loading || activeSessionReadOnly}
+                        className="ui-button-secondary rounded-full px-2 py-1 text-[10px] disabled:cursor-not-allowed sm:px-2.5 sm:text-[11px]"
+                      >
+                        {messages.chat.skills}
+                      </button>
+                    </div>
                   </div>
                   {activeSessionReadOnly ? (
                     <button
@@ -2744,7 +3196,7 @@ export function ChatShell({
                       disabled={
                         !activeSessionId ||
                         uploading ||
-                        (!text.trim() && pendingAttachments.length === 0)
+                        (!text.trim() && pendingAttachments.length === 0 && selectedSkills.length === 0)
                       }
                       className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
                     >

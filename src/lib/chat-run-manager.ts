@@ -2,6 +2,7 @@ import { ChatRunStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { composePrompt, sendToOpenClaw } from "@/lib/openclaw/chat";
 import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
+import { parseSelectedSkillsJson } from "@/lib/skills";
 import {
   appendChatRunDelta,
   appendChatRunToolEvent,
@@ -182,6 +183,7 @@ class ChatRunManager {
     const prompt = composePrompt(
       userMessage.content,
       attachments.map((attachment) => attachment.hostPath),
+      parseSelectedSkillsJson(userMessage.selectedSkillsJson).map((skill) => skill.key),
     );
 
     let lifecycleError: string | null = null;

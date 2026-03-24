@@ -14,6 +14,11 @@ import {
   getChatRunByClientRequestId,
 } from "@/lib/chat-run-service";
 import { prisma } from "@/lib/prisma";
+import {
+  listGatewaySkills,
+  resolveSelectedSkillSnapshots,
+  type SelectedSkillSnapshot,
+} from "@/lib/skills";
 import { getChatSessionForUser } from "@/lib/session-service";
 
 export const runtime = "nodejs";
@@ -21,6 +26,7 @@ export const runtime = "nodejs";
 const schema = z.object({
   message: z.string().default(""),
   attachmentIds: z.array(z.string()).default([]),
+  skillKeys: z.array(z.string()).default([]),
   clientRequestId: z.string().min(1),
 });
 
@@ -32,17 +38,21 @@ function logMessagesRouteDebug(message: string, details: Record<string, unknown>
   console.debug(message, details);
 }
 
-function buildTitleSource(message: string, attachmentNames: string[]) {
+function buildTitleSource(message: string, attachmentNames: string[], skillNames: string[]) {
   const trimmed = message.trim();
   if (trimmed) {
     return trimmed;
   }
 
-  if (!attachmentNames.length) {
-    return undefined;
+  if (attachmentNames.length) {
+    return attachmentNames.join(", ");
   }
 
-  return attachmentNames.join(", ");
+  if (skillNames.length) {
+    return skillNames.join(", ");
+  }
+
+  return undefined;
 }
 
 export async function GET(
@@ -89,8 +99,9 @@ export async function POST(
 
   const messageText = payload.data.message.trim();
   const attachmentIds = [...new Set(payload.data.attachmentIds)];
+  const skillKeys = [...new Set(payload.data.skillKeys)];
 
-  if (!messageText && attachmentIds.length === 0) {
+  if (!messageText && attachmentIds.length === 0 && skillKeys.length === 0) {
     return NextResponse.json({ error: messages.sessions.messageOrAttachmentRequired }, { status: 400 });
   }
 
@@ -146,6 +157,30 @@ export async function POST(
     (left, right) => (attachmentOrder.get(left.id) ?? 0) - (attachmentOrder.get(right.id) ?? 0),
   );
 
+  let selectedSkills: SelectedSkillSnapshot[] = [];
+  if (skillKeys.length) {
+    const availableSkills = await listGatewaySkills();
+    const resolution = resolveSelectedSkillSnapshots({
+      skillKeys,
+      skills: availableSkills,
+    });
+
+    if (!resolution.ok) {
+      const errorMessage =
+        resolution.code === "disabled"
+          ? messages.sessions.skillDisabled
+          : resolution.code === "blocked"
+            ? messages.sessions.skillBlocked
+            : resolution.code === "missing"
+              ? messages.sessions.skillMissing
+              : messages.sessions.skillNotFound;
+
+      return NextResponse.json({ error: errorMessage }, { status: 400 });
+    }
+
+    selectedSkills = resolution.selectedSkills;
+  }
+
   if (attachmentIds.length) {
     const existingAttachmentUsage = await prisma.chatMessageCache.findFirst({
       where: {
@@ -169,8 +204,10 @@ export async function POST(
       userId: user.id,
       clientRequestId: payload.data.clientRequestId,
       attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
+      skillKeys: selectedSkills.map((skill) => skill.key),
       messageLength: messageText.length,
       hasAttachments: orderedAttachmentRecords.length > 0,
+      skillCount: selectedSkills.length,
     });
 
     const result = await createChatRunForMessage({
@@ -181,10 +218,12 @@ export async function POST(
           ? buildTitleSource(
               messageText,
               orderedAttachmentRecords.map((attachment) => attachment.originalName),
+              selectedSkills.map((skill) => skill.name),
             )
           : undefined,
       message: messageText,
       attachmentIds: orderedAttachmentRecords.map((attachment) => attachment.id),
+      selectedSkills,
       clientRequestId: payload.data.clientRequestId,
     });
 

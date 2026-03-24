@@ -2,6 +2,7 @@ import { ChatRunStatus, MessageRole, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { GatewayToolEvent } from "@/lib/openclaw/gateway";
 import { normalizeSessionTitle } from "@/lib/session-service";
+import type { SelectedSkillSnapshot } from "@/lib/skills";
 
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const TERMINAL_CHAT_RUN_STATUSES = [
@@ -170,6 +171,7 @@ export async function createChatRunForMessage(args: {
   titleSource?: string;
   message: string;
   attachmentIds?: string[];
+  selectedSkills?: SelectedSkillSnapshot[];
   clientRequestId: string;
 }) {
   return prisma.$transaction(async (tx) => {
@@ -220,6 +222,9 @@ export async function createChatRunForMessage(args: {
         role: MessageRole.USER,
         content: args.message,
         attachmentIds: args.attachmentIds ?? [],
+        selectedSkillsJson: args.selectedSkills?.length
+          ? (args.selectedSkills as Prisma.InputJsonValue)
+          : undefined,
       },
     });
 

@@ -6,6 +6,10 @@ type OpenClawAttachmentInput = {
   hostPath: string;
 };
 
+type OpenClawSelectedSkillInput = {
+  key: string;
+};
+
 export type OpenClawChatInput = {
   message: string;
   mode: "media_prompt";
@@ -16,24 +20,29 @@ export function buildSessionKey(agentId: string, openclawSessionId: string) {
   return `agent:${agentId}:${openclawSessionId}`;
 }
 
-export function composePrompt(message: string, hostPaths: string[]) {
+export function composePrompt(message: string, hostPaths: string[], skillKeys: string[] = []) {
   return buildOpenClawInput({
     text: message,
     attachments: hostPaths.map((hostPath, index) => ({
       id: String(index),
       hostPath,
     })),
+    selectedSkills: skillKeys.map((key) => ({ key })),
   }).message;
 }
 
 export function buildOpenClawInput({
   text,
   attachments,
+  selectedSkills,
 }: {
   text: string;
   attachments: OpenClawAttachmentInput[];
+  selectedSkills: OpenClawSelectedSkillInput[];
 }): OpenClawChatInput {
-  if (!attachments.length) {
+  const skillLines = selectedSkills.map((skill) => `[@skill:${skill.key}]`);
+
+  if (!attachments.length && !skillLines.length) {
     return {
       message: text,
       mode: "media_prompt",
@@ -42,7 +51,12 @@ export function buildOpenClawInput({
   }
 
   const mediaLines = attachments.map((attachment) => `MEDIA:${attachment.hostPath}`);
-  const prompt = text ? `${mediaLines.join("\n")}\n\n${text}` : mediaLines.join("\n");
+  const promptSections = [
+    mediaLines.length ? mediaLines.join("\n") : null,
+    skillLines.length ? skillLines.join("\n") : null,
+    text || null,
+  ].filter((value): value is string => Boolean(value));
+  const prompt = promptSections.join("\n\n");
 
   return {
     message: prompt,

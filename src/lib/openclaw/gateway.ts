@@ -51,6 +51,34 @@ export type GatewayToolEvent = {
   raw: Record<string, unknown> | null;
 };
 
+export type GatewaySkillMissing = {
+  bins: string[];
+  anyBins: string[];
+  env: string[];
+  config: string[];
+  os: string[];
+};
+
+export type GatewaySkillInstallItem = {
+  id: string;
+  kind: string;
+  label: string;
+  bins: string[];
+};
+
+export type GatewaySkillListItem = {
+  key: string;
+  name: string;
+  description: string;
+  source: string;
+  bundled: boolean;
+  eligible: boolean;
+  disabled: boolean;
+  blockedByAllowlist: boolean;
+  missing: GatewaySkillMissing;
+  install: GatewaySkillInstallItem[];
+};
+
 type StreamHandlers = {
   onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
   onDelta?: (delta: string) => void | Promise<void>;
@@ -182,6 +210,10 @@ function readStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
+}
+
+function readBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : false;
 }
 
 function firstNonEmptyStringArray(...values: unknown[]) {
@@ -499,6 +531,67 @@ function summarizeGatewayFrame(frame: GatewayEvent) {
     deltaLength: delta?.length ?? 0,
     deltaPreview: delta ? truncate(delta, 80) : null,
     payload: summarizeGatewayValue(frame.payload),
+  };
+}
+
+function normalizeSkillInstallItem(value: unknown): GatewaySkillInstallItem | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const id = readString(record.id);
+  const kind = readString(record.kind);
+  const label = readString(record.label);
+
+  if (!id || !kind || !label) {
+    return null;
+  }
+
+  return {
+    id,
+    kind,
+    label,
+    bins: readStringArray(record.bins),
+  };
+}
+
+function normalizeSkillListItem(value: unknown): GatewaySkillListItem | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const key = readString(record.skillKey) ?? readString(record.key);
+  const name = readString(record.name);
+  if (!key || !name) {
+    return null;
+  }
+
+  const missing = asRecord(record.missing);
+  const install = Array.isArray(record.install)
+    ? record.install
+        .map((item) => normalizeSkillInstallItem(item))
+        .filter((item): item is GatewaySkillInstallItem => item !== null)
+    : [];
+
+  return {
+    key,
+    name,
+    description: readString(record.description) ?? "",
+    source: readString(record.source) ?? "unknown",
+    bundled: readBoolean(record.bundled),
+    eligible: readBoolean(record.eligible),
+    disabled: readBoolean(record.disabled),
+    blockedByAllowlist: readBoolean(record.blockedByAllowlist),
+    missing: {
+      bins: readStringArray(missing?.bins),
+      anyBins: readStringArray(missing?.anyBins),
+      env: readStringArray(missing?.env),
+      config: readStringArray(missing?.config),
+      os: readStringArray(missing?.os),
+    },
+    install,
   };
 }
 
@@ -973,6 +1066,35 @@ export class OpenClawGatewayClient {
         details: asRecord(response.error?.details),
       });
     }
+  }
+
+  async listSkills() {
+    const response = await this.request("skills.status", {});
+    if (!response.ok) {
+      const detailCode =
+        typeof response.error?.details?.code === "string" ? response.error.details.code : null;
+      throw new OpenClawGatewayError({
+        message: this.formatRequestError(
+          "skills.status",
+          response.error?.message ?? "skills.status failed",
+          detailCode,
+        ),
+        code: response.error?.code ?? null,
+        detailCode,
+        details: asRecord(response.error?.details),
+      });
+    }
+
+    const payload = asRecord(response.payload) ?? {};
+    const items = Array.isArray(payload.skills)
+      ? payload.skills
+      : Array.isArray(payload.items)
+        ? payload.items
+        : [];
+
+    return items
+      .map((item) => normalizeSkillListItem(item))
+      .filter((item): item is GatewaySkillListItem => item !== null);
   }
 
   private async request(method: string, params: Record<string, unknown>) {

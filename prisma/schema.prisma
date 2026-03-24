@@ -83,6 +83,7 @@ model ChatMessageCache {
   role          MessageRole
   content       String
   attachmentIds String[]
+  selectedSkillsJson Json?
   createdAt     DateTime    @default(now())
   session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
