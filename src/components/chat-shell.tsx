@@ -783,6 +783,7 @@ export function ChatShell({
   const [renameTitle, setRenameTitle] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
@@ -1484,6 +1485,27 @@ export function ChatShell({
     shouldSnapMessagesToBottomRef.current = false;
   }, [renderableMessages, syncMessagesToBottom, visibleDraftKey]);
 
+  useLayoutEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "auto";
+
+    const computedStyle = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(computedStyle.lineHeight);
+    const paddingHeight =
+      Number.parseFloat(computedStyle.paddingTop) + Number.parseFloat(computedStyle.paddingBottom);
+    const borderHeight =
+      Number.parseFloat(computedStyle.borderTopWidth) + Number.parseFloat(computedStyle.borderBottomWidth);
+    const maxHeight = lineHeight * 10 + paddingHeight + borderHeight;
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [activeSessionId, text]);
+
   useEffect(() => {
     if (initialActiveSessionId && initialActiveRun) {
       subscribeToRun(initialActiveSessionId, initialActiveRun);
@@ -1682,9 +1704,7 @@ export function ChatShell({
     setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
   }
 
-  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
+  async function submitActiveMessage() {
     if (!activeSessionId || loading) {
       return;
     }
@@ -1825,6 +1845,20 @@ export function ChatShell({
     }));
     lastEventSeqByRunRef.current[run.id] = run.lastEventSeq;
     await loadSession(targetSessionId, false);
+  }
+
+  function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitActiveMessage();
+  }
+
+  function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    void submitActiveMessage();
   }
 
   async function abortSession() {
@@ -2241,6 +2275,7 @@ export function ChatShell({
               ) : null}
               <form onSubmit={sendMessage} className="px-0.5 py-0.5">
                 <textarea
+                  ref={composerTextareaRef}
                   value={text}
                   onChange={(event) => {
                     if (!activeSessionId) {
@@ -2249,9 +2284,10 @@ export function ChatShell({
                     const value = event.target.value;
                     setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
                   }}
+                  onKeyDown={handleComposerKeyDown}
                   rows={2}
                   placeholder="Message the agent..."
-                  className="min-h-[3rem] w-full resize-none bg-transparent px-0 py-0 text-[15px] leading-5 text-stone-100 outline-none placeholder:text-stone-500 sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
+                  className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-stone-100 outline-none placeholder:text-stone-500 sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
                   disabled={!activeSessionId || loading}
                 />
                 <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-white/8 pt-1.5">
