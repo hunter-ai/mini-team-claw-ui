@@ -11,7 +11,6 @@ function setLocaleCookie(locale: Locale) {
 
 export function LanguageSwitcher({
   locale,
-  messages,
   className,
 }: {
   locale: Locale;
@@ -47,7 +46,7 @@ export function LanguageSwitcher({
         onClick={() => switchLocale("zh")}
         className={`rounded-full px-2.5 py-1 ${locale === "zh" ? "ui-button-secondary" : "text-[color:var(--text-secondary)]"}`}
       >
-        {messages.common.switchToLanguage}
+        中文
       </button>
     </div>
   );
