@@ -1137,7 +1137,7 @@ const ChatSidebar = memo(function ChatSidebar({
             <button
               type="button"
               onClick={onExpandSidebar}
-              className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full text-xs"
+              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0 text-xs [&>span]:block [&>span]:-translate-y-px"
               aria-label={messages.nav.expandSidebar}
               title={messages.nav.expandSidebar}
             >
@@ -1155,7 +1155,7 @@ const ChatSidebar = memo(function ChatSidebar({
                 <button
                   type="button"
                   onClick={onCollapseSidebar}
-                  className="ui-button-secondary hidden size-8 items-center justify-center rounded-full text-xs lg:inline-flex"
+                  className="ui-button-secondary hidden size-8 shrink-0 items-center justify-center rounded-full p-0 text-xs [&>span]:block [&>span]:-translate-y-px lg:inline-flex"
                   aria-label={messages.nav.collapseSidebar}
                   title={messages.nav.collapseSidebar}
                 >
@@ -2581,7 +2581,7 @@ export function ChatShell({
             <button
               type="button"
               onClick={handleOpenDrawer}
-              className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full lg:hidden"
+              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0 [&>svg]:block [&>svg]:-translate-y-px lg:hidden"
               aria-label={messages.nav.openDrawer}
               title={messages.nav.openDrawer}
             >
