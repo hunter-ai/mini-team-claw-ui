@@ -199,4 +199,4 @@ Prisma schema 目前包含以下核心实体：
 
 ## 许可证
 
-当前仓库还没有附带 `LICENSE` 文件。如果你准备公开发布或正式接收开源贡献，建议先补上明确的许可证。
+本项目采用 MIT License，详见 [`LICENSE`](./LICENSE)。

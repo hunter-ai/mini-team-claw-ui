@@ -199,4 +199,4 @@ Issues and pull requests are welcome. If you plan to contribute code, keep these
 
 ## License
 
-No license file is included in this repository at the moment. Add a `LICENSE` file before publishing or accepting open-source contributions under a defined license.
+This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).
