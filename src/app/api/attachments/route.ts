@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const saved = await persistUpload(user.id, file);
+    const saved = await persistUpload(user.id, session.id, file);
     const attachment = await prisma.attachment.create({
       data: {
         userId: user.id,

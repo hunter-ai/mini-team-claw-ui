@@ -26,7 +26,7 @@ export function ensureMimeAllowed(mime: string) {
   return allowedMimeTypes.has(mime);
 }
 
-export async function persistUpload(userId: string, file: File) {
+export async function persistUpload(userId: string, sessionId: string, file: File) {
   const env = getEnv();
   if (!ensureMimeAllowed(file.type)) {
     throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
@@ -40,7 +40,7 @@ export async function persistUpload(userId: string, file: File) {
   const segment = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   const safeName = sanitizeName(file.name || "attachment");
   const filename = `${randomUUID()}_${safeName}`;
-  const relativePath = path.join(userId, segment, filename);
+  const relativePath = path.join(userId, segment, sessionId, filename);
   const containerPath = path.join(env.OPENCLAW_UPLOAD_DIR_CONTAINER, relativePath);
   const hostPath = path.join(env.OPENCLAW_UPLOAD_DIR_HOST, relativePath);
 
