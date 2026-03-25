@@ -134,6 +134,8 @@ const zh = {
     failedToLoadMoreSessions: "加载更多会话失败",
     failedToCreateSession: "创建会话失败",
     failedToSend: "发送失败",
+    contextLoading: "正在读取上下文",
+    contextRemaining: "剩余 {count}",
     uploadFailedForFile: "{fileName} 上传失败",
     connectionLost: "当前回复的连接已断开，请刷新这个会话后恢复。",
     lifecycleStarted: "运行已开始",

@@ -22,6 +22,7 @@ import type { Dictionary } from "@/lib/i18n/dictionary";
 import { getLifecycleTitle, t } from "@/lib/i18n/messages";
 import { localizeHref } from "@/lib/i18n/routing";
 import { LogoutButton } from "@/components/logout-button";
+import type { SessionContextUsage } from "@/lib/session-context-usage";
 
 type Attachment = {
   id: string;
@@ -127,6 +128,11 @@ type BufferedRunPatch = {
   draftAssistantContent: string;
   lastEventSeq: number;
   updatedAt: string;
+};
+
+type SessionContextUsageState = {
+  status: "ok" | "unavailable";
+  usage: SessionContextUsage | null;
 };
 
 type RenderableMessage =
@@ -982,6 +988,82 @@ function StopSquareIcon() {
   );
 }
 
+function GaugeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      <path
+        d="M3.75 13.75a6.25 6.25 0 1 1 12.5 0"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10 10l3-2"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+      <circle cx="10" cy="10" r="1.125" fill="currentColor" />
+    </svg>
+  );
+}
+
+function formatCompactTokenCount(value: number) {
+  const normalized = Math.max(0, value);
+  if (normalized >= 1000) {
+    const compact = normalized / 1000;
+    const fractionDigits = compact >= 100 ? 0 : compact >= 10 ? 1 : 1;
+    return `${compact.toFixed(fractionDigits).replace(/\.0$/, "")}k`;
+  }
+
+  return new Intl.NumberFormat("en-US").format(Math.round(normalized));
+}
+
+function ComposerContextUsage({
+  usage,
+  loading,
+}: {
+  usage: SessionContextUsage | null;
+  loading: boolean;
+}) {
+  if (!usage && !loading) {
+    return null;
+  }
+
+  const usageRatio = usage?.usageRatio ?? 0;
+  const toneClassName =
+    usage && usageRatio >= 1
+      ? "text-red-600"
+      : usage && usageRatio >= 0.85
+        ? "text-amber-600"
+        : "text-[color:var(--text-secondary)]";
+  const trackClassName =
+    usage && usageRatio >= 1
+      ? "bg-red-500"
+      : usage && usageRatio >= 0.85
+        ? "bg-amber-500"
+        : "bg-[color:var(--text-primary)]";
+
+  return (
+    <div className={`mt-1.5 inline-flex max-w-full items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2 py-1 text-[10px] sm:text-[11px] ${toneClassName}`}>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0">
+          <GaugeIcon />
+        </span>
+        <span className="truncate font-medium">
+          {loading && !usage ? "..." : `${formatCompactTokenCount(usage?.usedTokens ?? 0)}/${formatCompactTokenCount(usage?.totalTokens ?? 0)}`}
+        </span>
+      </div>
+      <div className="h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)] sm:min-w-16">
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${trackClassName} ${loading && !usage ? "animate-pulse opacity-50" : ""}`}
+          style={{ width: `${Math.max(8, Math.round((usage?.usageRatio ?? 0.18) * 100))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 const ChatMessageItem = memo(function ChatMessageItem({
   item,
   segmentation,
@@ -1513,6 +1595,8 @@ export function ChatShell({
   const [uploadingBySession, setUploadingBySession] = useState<Record<string, boolean>>({});
   const [errorBySession, setErrorBySession] = useState<Record<string, string | null>>({});
   const [pairingBySession, setPairingBySession] = useState<Record<string, PairingState | null>>({});
+  const [contextUsageBySession, setContextUsageBySession] = useState<Record<string, SessionContextUsageState>>({});
+  const [contextLoadingBySession, setContextLoadingBySession] = useState<Record<string, boolean>>({});
   const [loadedSessionIds, setLoadedSessionIds] = useState<Record<string, boolean>>(
     initialActiveSessionId ? { [initialActiveSessionId]: true } : {},
   );
@@ -1545,6 +1629,8 @@ export function ChatShell({
   const lastEventSeqByRunRef = useRef<Record<string, number>>(
     initialActiveRun ? { [initialActiveRun.id]: initialActiveRun.lastEventSeq } : {},
   );
+  const contextRequestVersionBySessionRef = useRef<Record<string, number>>({});
+  const contextInFlightBySessionRef = useRef<Record<string, boolean>>({});
   const activeRunBySessionRef = useRef<Record<string, SessionRun | null>>(
     initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
   );
@@ -1574,6 +1660,8 @@ export function ChatShell({
   const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
   const error = activeSessionId ? errorBySession[activeSessionId] ?? null : null;
   const pairing = activeSessionId ? pairingBySession[activeSessionId] ?? null : null;
+  const contextUsage = activeSessionId ? contextUsageBySession[activeSessionId]?.usage ?? null : null;
+  const contextLoading = activeSessionId ? contextLoadingBySession[activeSessionId] ?? false : false;
   const activeSessionReadOnly = activeSession?.status === "ARCHIVED";
   const activeRunHistory = useMemo(
     () => (activeRun ? runHistory.find((item) => item.runId === activeRun.id) ?? null : null),
@@ -1799,6 +1887,72 @@ export function ChatShell({
       [sessionId]: runs,
     }));
   }, []);
+
+  const refreshSessionContext = useCallback(
+    async (sessionId: string) => {
+      if (contextInFlightBySessionRef.current[sessionId]) {
+        return;
+      }
+
+      const currentRun = activeRunBySessionRef.current[sessionId];
+      if (currentRun && isActiveSessionRunStatus(currentRun.status)) {
+        return;
+      }
+
+      contextInFlightBySessionRef.current[sessionId] = true;
+      const requestVersion = (contextRequestVersionBySessionRef.current[sessionId] ?? 0) + 1;
+      contextRequestVersionBySessionRef.current[sessionId] = requestVersion;
+      setContextLoadingBySession((current) => ({ ...current, [sessionId]: true }));
+
+      try {
+        const response = await localeFetch(`/api/sessions/${sessionId}/context`, {
+          method: "POST",
+          cache: "no-store",
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          status?: "ok" | "busy" | "unavailable";
+          usage?: SessionContextUsage;
+        };
+
+        if (contextRequestVersionBySessionRef.current[sessionId] !== requestVersion) {
+          return;
+        }
+
+        if (!response.ok || payload.status === "unavailable") {
+          setContextUsageBySession((current) => ({
+            ...current,
+            [sessionId]: {
+              status: "unavailable",
+              usage: current[sessionId]?.usage ?? null,
+            },
+          }));
+          return;
+        }
+
+        if (payload.status === "busy") {
+          return;
+        }
+
+        if (payload.status === "ok" && payload.usage) {
+          const nextUsage = payload.usage;
+          setContextUsageBySession((current) => ({
+            ...current,
+            [sessionId]: {
+              status: "ok",
+              usage: nextUsage,
+            },
+          }));
+        }
+      } finally {
+        if (contextRequestVersionBySessionRef.current[sessionId] === requestVersion) {
+          setContextLoadingBySession((current) => ({ ...current, [sessionId]: false }));
+        }
+        contextInFlightBySessionRef.current[sessionId] = false;
+      }
+    },
+    [localeFetch],
+  );
 
   const patchRunHistory = useCallback(
     (
@@ -2179,13 +2333,16 @@ export function ChatShell({
 
     if (!nextActiveRun) {
       setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+      if (payload.session.status !== "ARCHIVED") {
+        void refreshSessionContext(sessionId);
+      }
       return;
     }
 
     lastEventSeqByRunRef.current[nextActiveRun.id] = nextActiveRun.lastEventSeq;
 
     subscribeToRun(sessionId, nextActiveRun);
-  }, [localeFetch, messages.chat.failedToLoadSession, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
+  }, [localeFetch, messages.chat.failedToLoadSession, refreshSessionContext, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -2391,6 +2548,48 @@ export function ChatShell({
     };
   }, [initialActiveRun, initialActiveSessionId, subscribeToRun]);
 
+  useEffect(() => {
+    if (!initialActiveSessionId || initialActiveRun) {
+      return;
+    }
+
+    const initialSession = sessions.find((session) => session.id === initialActiveSessionId);
+    if (initialSession?.status === "ARCHIVED") {
+      return;
+    }
+
+    void refreshSessionContext(initialActiveSessionId);
+  }, [
+    initialActiveRun,
+    initialActiveSessionId,
+    refreshSessionContext,
+    sessions,
+  ]);
+
+  useEffect(() => {
+    if (!activeSessionId || !activeSessionLoaded || activeSessionReadOnly || contextLoading) {
+      return;
+    }
+
+    if (activeRun && isActiveSessionRunStatus(activeRun.status)) {
+      return;
+    }
+
+    if (contextUsageBySession[activeSessionId]?.usage) {
+      return;
+    }
+
+    void refreshSessionContext(activeSessionId);
+  }, [
+    activeRun,
+    activeSessionId,
+    activeSessionLoaded,
+    activeSessionReadOnly,
+    contextLoading,
+    contextUsageBySession,
+    refreshSessionContext,
+  ]);
+
   const selectSession = useCallback(async (sessionId: string) => {
     logChatShellDebug("[chat-debug][chat-shell] selecting session", {
       fromSessionId: activeSessionId,
@@ -2420,8 +2619,14 @@ export function ChatShell({
     }
     if (run && isActiveSessionRunStatus(run.status)) {
       subscribeToRun(sessionId, run);
+      return;
     }
-  }, [activeSessionId, flushBufferedRunPatch, loadedSessionIds, loadSession, subscribeToRun, syncSessionUrl]);
+
+    const selectedSession = sessions.find((candidate) => candidate.id === sessionId);
+    if (selectedSession?.status !== "ARCHIVED") {
+      void refreshSessionContext(sessionId);
+    }
+  }, [activeSessionId, flushBufferedRunPatch, loadedSessionIds, loadSession, refreshSessionContext, sessions, subscribeToRun, syncSessionUrl]);
 
   const createSession = useCallback(async () => {
     logChatShellDebug("[chat-debug][chat-shell] creating session", {
@@ -3106,6 +3311,12 @@ export function ChatShell({
                 </button>
               )}
             </div>
+            {!isCreateSessionOnly && !activeSessionReadOnly ? (
+              <ComposerContextUsage
+                usage={contextUsage}
+                loading={contextLoading}
+              />
+            ) : null}
           </form>
           {!isCreateSessionOnly && error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
         </div>

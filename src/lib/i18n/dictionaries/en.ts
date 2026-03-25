@@ -134,6 +134,8 @@ const en = {
     failedToLoadMoreSessions: "Failed to load more sessions",
     failedToCreateSession: "Failed to create session",
     failedToSend: "Failed to send",
+    contextLoading: "Loading context",
+    contextRemaining: "{count} left",
     uploadFailedForFile: "Upload failed for {fileName}",
     connectionLost: "Connection to the active response was lost. Refresh this session to recover.",
     lifecycleStarted: "Run started",
