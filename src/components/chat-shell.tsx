@@ -245,6 +245,10 @@ function mapRunStatusToState(status: SessionRun["status"] | undefined | null): R
   }
 }
 
+function isActiveSessionRunStatus(status: SessionRun["status"] | undefined | null) {
+  return status === "STARTING" || status === "STREAMING";
+}
+
 function isRunBusy(state: RunState) {
   return state === "starting" || state === "streaming" || state === "reconnecting";
 }
@@ -1042,24 +1046,6 @@ const ChatMessageItem = memo(function ChatMessageItem({
       </p>
     </div>
   );
-}, (previous, next) => {
-  if (previous.segmentation !== next.segmentation) {
-    return false;
-  }
-
-  if (previous.item.kind !== next.item.kind || previous.item.id !== next.item.id) {
-    return false;
-  }
-
-  if (previous.item.kind === "message" && next.item.kind === "message") {
-    return previous.item.message === next.item.message && previous.item.run === next.item.run;
-  }
-
-  if (previous.item.kind === "synthetic-run" && next.item.kind === "synthetic-run") {
-    return previous.item.run === next.item.run;
-  }
-
-  return false;
 });
 
 const ActiveRunPanel = memo(function ActiveRunPanel({
@@ -1573,8 +1559,7 @@ export function ChatShell({
     [activeRun, runHistory],
   );
   const activeRunSegmentation = activeRun ? contentSegmentsByRunId[activeRun.id] ?? null : null;
-  const activeStreamingRunId =
-    activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? activeRun.id : null;
+  const activeStreamingRunId = activeRun && isActiveSessionRunStatus(activeRun.status) ? activeRun.id : null;
   const sortedSkills = useMemo(
     () =>
       skills
@@ -1583,7 +1568,7 @@ export function ChatShell({
     [skills],
   );
   const activeRunBlocks = useMemo(() => {
-    if (!activeRun || !["STARTING", "STREAMING"].includes(activeRun.status)) {
+    if (!activeRun || !isActiveSessionRunStatus(activeRun.status)) {
       return [];
     }
 
@@ -2010,6 +1995,20 @@ export function ChatShell({
         receivedEventCount,
       });
 
+      const terminalRunStatus =
+        payload.type === "done"
+          ? "COMPLETED"
+          : payload.type === "aborted"
+            ? "ABORTED"
+            : "FAILED";
+      const terminalRunError =
+        payload.type === "done"
+          ? null
+          : payload.type === "aborted"
+            ? payload.reason
+            : payload.type === "pairing_required"
+              ? payload.pairing.message
+              : payload.error;
       if (payload.type === "done") {
         setSessionRunState(sessionId, "completed");
         setErrorBySession((current) => ({ ...current, [sessionId]: null }));
@@ -2032,20 +2031,8 @@ export function ChatShell({
         patchRunHistory(sessionId, run.id, (existing) =>
           existing
             ? {
-                status:
-                  payload.type === "done"
-                    ? "COMPLETED"
-                    : payload.type === "aborted"
-                      ? "ABORTED"
-                      : "FAILED",
-                errorMessage:
-                  payload.type === "done"
-                    ? null
-                    : payload.type === "aborted"
-                      ? payload.reason
-                      : payload.type === "pairing_required"
-                        ? payload.pairing.message
-                        : payload.error,
+                status: terminalRunStatus,
+                errorMessage: terminalRunError,
                 updatedAt: payload.createdAt,
                 steps: mergeRunActivityEntries(existing.steps, activityEntry),
               }
@@ -2053,6 +2040,7 @@ export function ChatShell({
         );
       }
 
+      updateActiveRun(sessionId, null);
       void loadSessionRef.current(sessionId, false);
     };
 
@@ -2153,21 +2141,22 @@ export function ChatShell({
     replaceRunHistory(sessionId, payload.runHistory);
     setLoadedSessionIds((current) => ({ ...current, [sessionId]: true }));
     updateSessionSummary(payload.session);
-    updateActiveRun(sessionId, payload.activeRun);
+    const nextActiveRun = payload.activeRun && isActiveSessionRunStatus(payload.activeRun.status)
+      ? payload.activeRun
+      : null;
+    updateActiveRun(sessionId, nextActiveRun);
 
-    const nextState = payload.activeRun ? mapRunStatusToState(payload.activeRun.status) : "idle";
+    const nextState = nextActiveRun ? mapRunStatusToState(nextActiveRun.status) : "idle";
     setSessionRunState(sessionId, nextState);
 
-    if (!payload.activeRun) {
+    if (!nextActiveRun) {
       setPairingBySession((current) => ({ ...current, [sessionId]: null }));
       return;
     }
 
-    lastEventSeqByRunRef.current[payload.activeRun.id] = payload.activeRun.lastEventSeq;
+    lastEventSeqByRunRef.current[nextActiveRun.id] = nextActiveRun.lastEventSeq;
 
-    if (["STARTING", "STREAMING"].includes(payload.activeRun.status)) {
-      subscribeToRun(sessionId, payload.activeRun);
-    }
+    subscribeToRun(sessionId, nextActiveRun);
   }, [localeFetch, messages.chat.failedToLoadSession, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
@@ -2393,10 +2382,15 @@ export function ChatShell({
     }
 
     const run = activeRunBySessionRef.current[sessionId];
+    if (run && isActiveSessionRunStatus(run.status)) {
+      await loadSession(sessionId, false);
+      return;
+    }
+
     if (run) {
       flushBufferedRunPatch(sessionId, run);
     }
-    if (run && ["STARTING", "STREAMING"].includes(run.status)) {
+    if (run && isActiveSessionRunStatus(run.status)) {
       subscribeToRun(sessionId, run);
     }
   }, [activeSessionId, flushBufferedRunPatch, loadedSessionIds, loadSession, subscribeToRun, syncSessionUrl]);
@@ -2893,7 +2887,7 @@ export function ChatShell({
           onScroll={handleMessagesScroll}
           className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2 sm:py-2"
         >
-          <div className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
+          <div key={activeSessionId ?? "no-session"} className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
             {pairing ? (
               <div className="max-w-[96ch] rounded-[0.9rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
                 <p className="text-xs font-semibold">{messages.chat.pairingTitle}</p>
@@ -2939,8 +2933,14 @@ export function ChatShell({
               />
             ))}
 
-            {activeRun && ["STARTING", "STREAMING"].includes(activeRun.status) ? (
-              <ActiveRunPanel activeRun={activeRun} activeRunBlocks={activeRunBlocks} locale={locale} messages={messages} />
+            {activeRun && isActiveSessionRunStatus(activeRun.status) ? (
+              <ActiveRunPanel
+                key={visibleDraftKey}
+                activeRun={activeRun}
+                activeRunBlocks={activeRunBlocks}
+                locale={locale}
+                messages={messages}
+              />
             ) : null}
           </div>
         </div>
