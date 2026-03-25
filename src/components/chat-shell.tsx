@@ -23,6 +23,7 @@ import { getLifecycleTitle, t } from "@/lib/i18n/messages";
 import { localizeHref } from "@/lib/i18n/routing";
 import { LogoutButton } from "@/components/logout-button";
 import type { SessionContextUsage } from "@/lib/session-context-usage";
+import { OPENCLAW_SLASH_COMMANDS, type SlashCommandDefinition } from "@/lib/slash-commands";
 
 type Attachment = {
   id: string;
@@ -135,6 +136,42 @@ type SessionContextUsageState = {
   usage: SessionContextUsage | null;
 };
 
+type ComposerSelection = {
+  start: number;
+  end: number;
+};
+
+type SlashSuggestionItem =
+  | {
+      kind: "openclaw-command";
+      key: string;
+      label: string;
+      description: string;
+      aliases: string[];
+      argumentHint?: string;
+      insertText: string;
+      searchTerms: string[];
+    }
+  | {
+      kind: "skill";
+      key: string;
+      label: string;
+      description: string;
+      skill: Skill;
+      searchTerms: string[];
+    };
+
+type ActiveSlashMatch = {
+  lineStart: number;
+  slashStart: number;
+  tokenEnd: number;
+  query: string;
+  commandName: string;
+  argsText: string;
+  isCursorInCommandToken: boolean;
+  dismissKey: string;
+};
+
 type RenderableMessage =
   | {
       kind: "message";
@@ -176,6 +213,146 @@ type AssistantRenderBlock =
     };
 
 const SESSION_TITLE_MAX_LENGTH = 60;
+
+function normalizeSlashSearchTerm(value: string) {
+  return value.trim().toLowerCase().replace(/^\//, "");
+}
+
+function getSlashLineStart(text: string, cursor: number) {
+  return text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+}
+
+function parseActiveSlashMatch(text: string, selectionStart: number, selectionEnd: number): ActiveSlashMatch | null {
+  if (selectionStart !== selectionEnd) {
+    return null;
+  }
+
+  const lineStart = getSlashLineStart(text, selectionStart);
+  const lineBeforeCursor = text.slice(lineStart, selectionStart);
+  const leadingWhitespace = lineBeforeCursor.match(/^\s*/)?.[0].length ?? 0;
+  const trimmedBeforeCursor = lineBeforeCursor.slice(leadingWhitespace);
+
+  if (!trimmedBeforeCursor.startsWith("/")) {
+    return null;
+  }
+
+  const slashStart = lineStart + leadingWhitespace;
+  const lineEndIndex = text.indexOf("\n", slashStart);
+  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+  const lineContent = text.slice(slashStart, lineEnd);
+  const tokenMatch = lineContent.match(/^\/([^\s]*)/);
+
+  if (!tokenMatch) {
+    return null;
+  }
+
+  const commandName = tokenMatch[1];
+  const tokenEnd = slashStart + tokenMatch[0].length;
+
+  return {
+    lineStart,
+    slashStart,
+    tokenEnd,
+    query: commandName,
+    commandName,
+    argsText: lineContent.slice(tokenMatch[0].length).trimStart(),
+    isCursorInCommandToken: selectionStart <= tokenEnd,
+    dismissKey: `${slashStart}:${lineContent}`,
+  };
+}
+
+function scoreSlashSuggestion(query: string, item: SlashSuggestionItem) {
+  if (!query) {
+    return item.kind === "openclaw-command" ? 0 : 1;
+  }
+
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const searchTerm of item.searchTerms) {
+    if (searchTerm === query) {
+      bestScore = Math.min(bestScore, 0);
+      continue;
+    }
+    if (searchTerm.startsWith(query)) {
+      bestScore = Math.min(bestScore, 1);
+      continue;
+    }
+    const includesIndex = searchTerm.indexOf(query);
+    if (includesIndex !== -1) {
+      bestScore = Math.min(bestScore, 20 + includesIndex);
+    }
+  }
+
+  return bestScore;
+}
+
+function buildSlashSuggestions(args: {
+  query: string;
+  sortedSkills: Skill[];
+  commands: SlashCommandDefinition[];
+}) {
+  const normalizedQuery = normalizeSlashSearchTerm(args.query);
+  const suggestions: Array<SlashSuggestionItem & { score: number }> = [];
+
+  for (const command of args.commands) {
+    const item: SlashSuggestionItem = {
+      kind: "openclaw-command",
+      key: command.key,
+      label: command.label,
+      description: command.description,
+      aliases: command.aliases,
+      argumentHint: command.argumentHint,
+      insertText: command.insertText,
+      searchTerms: [
+        normalizeSlashSearchTerm(command.key),
+        normalizeSlashSearchTerm(command.label),
+        ...command.aliases.map(normalizeSlashSearchTerm),
+      ],
+    };
+    const score = scoreSlashSuggestion(normalizedQuery, item);
+    if (score !== Number.POSITIVE_INFINITY) {
+      suggestions.push({ ...item, score });
+    }
+  }
+
+  for (const skill of args.sortedSkills) {
+    const item: SlashSuggestionItem = {
+      kind: "skill",
+      key: skill.key,
+      label: skill.name,
+      description: skill.description,
+      skill,
+      searchTerms: [
+        normalizeSlashSearchTerm(skill.key),
+        normalizeSlashSearchTerm(skill.name),
+        ...skill.name.split(/\s+/).map(normalizeSlashSearchTerm),
+      ],
+    };
+    const score = scoreSlashSuggestion(normalizedQuery, item);
+    if (score !== Number.POSITIVE_INFINITY) {
+      suggestions.push({ ...item, score });
+    }
+  }
+
+  return suggestions
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+      if (left.kind !== right.kind) {
+        return left.kind === "openclaw-command" ? -1 : 1;
+      }
+      return left.label.localeCompare(right.label);
+    })
+    .map((entry) => {
+      const { score, ...item } = entry;
+      void score;
+      return item;
+    });
+}
+
+function replaceComposerRange(text: string, start: number, end: number, nextText: string) {
+  return `${text.slice(0, start)}${nextText}${text.slice(end)}`;
+}
 
 function logChatShellDebug(message: string, details: Record<string, unknown>) {
   if (process.env.NODE_ENV !== "development") {
@@ -874,6 +1051,163 @@ function SkillListItemCard({
         </p>
       ) : null}
     </button>
+  );
+}
+
+function CommandBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-full border border-[rgba(17,24,39,0.08)] bg-[rgba(17,24,39,0.05)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-secondary)]">
+      {children}
+    </span>
+  );
+}
+
+function highlightSlashLabel(label: string, query: string) {
+  const normalizedQuery = normalizeSlashSearchTerm(query);
+  if (!normalizedQuery) {
+    return label;
+  }
+
+  const lowerLabel = label.toLowerCase();
+  const matchIndex = lowerLabel.indexOf(normalizedQuery);
+  if (matchIndex === -1) {
+    return label;
+  }
+
+  const matchEnd = matchIndex + normalizedQuery.length;
+  return (
+    <>
+      {label.slice(0, matchIndex)}
+      <mark className="bg-[rgba(14,116,144,0.14)] px-0 text-current">
+        {label.slice(matchIndex, matchEnd)}
+      </mark>
+      {label.slice(matchEnd)}
+    </>
+  );
+}
+
+function SlashCommandItemCard({
+  item,
+  query,
+  messages,
+  selected = false,
+  onSelect,
+}: {
+  item: SlashSuggestionItem;
+  query: string;
+  messages: Dictionary;
+  selected?: boolean;
+  onSelect?: (item: SlashSuggestionItem) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect?.(item)}
+      className={`block w-full rounded-[0.85rem] border px-3 py-2.5 text-left transition-colors ${
+        selected
+          ? "border-[rgba(14,116,144,0.28)] bg-[#ecfeff]"
+          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)]"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="text-xs font-semibold text-[color:var(--text-primary)]">
+          {highlightSlashLabel(item.kind === "openclaw-command" ? item.label : `/${item.label}`, query)}
+        </p>
+        <CommandBadge>{item.kind === "openclaw-command" ? messages.chat.slashCommandBadge : messages.chat.slashSkillBadge}</CommandBadge>
+      </div>
+      {item.description ? (
+        <p className="mt-1 overflow-hidden text-[11px] leading-5 text-[color:var(--text-secondary)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+          {item.description}
+        </p>
+      ) : null}
+      {item.kind === "openclaw-command" && item.argumentHint ? (
+        <p className="mt-1 text-[10px] leading-4 text-[color:var(--text-tertiary)]">{item.argumentHint}</p>
+      ) : null}
+    </button>
+  );
+}
+
+function SlashCommandList({
+  suggestions,
+  highlightedIndex,
+  query,
+  messages,
+  loadingSkills,
+  skillsError,
+  onSelect,
+}: {
+  suggestions: SlashSuggestionItem[];
+  highlightedIndex: number;
+  query: string;
+  messages: Dictionary;
+  loadingSkills: boolean;
+  skillsError: string | null;
+  onSelect: (item: SlashSuggestionItem) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const listElement = listRef.current;
+    if (!listElement) {
+      return;
+    }
+
+    const itemElement = listElement.querySelector<HTMLElement>(`[data-slash-index="${highlightedIndex}"]`);
+    itemElement?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, suggestions]);
+
+  if (!suggestions.length && !loadingSkills && !skillsError) {
+    return (
+      <div className="rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[11px] text-[color:var(--text-secondary)]">
+        {query ? messages.chat.slashNoMatches : messages.chat.slashStartTyping}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={listRef} className="space-y-2">
+      {skillsError ? (
+        <p className="text-[11px] leading-5 text-amber-700">{skillsError}</p>
+      ) : null}
+      {loadingSkills ? (
+        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.slashLoading}</p>
+      ) : null}
+      {suggestions.length ? (
+        <div className="space-y-2">
+          {suggestions.map((item, index) => (
+            <div key={`${item.kind}:${item.key}`} data-slash-index={index}>
+              <SlashCommandItemCard
+                item={item}
+                query={query}
+                messages={messages}
+                selected={index === highlightedIndex}
+                onSelect={onSelect}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SlashCommandHint({
+  command,
+  messages,
+}: {
+  command: SlashCommandDefinition;
+  messages: Dictionary;
+}) {
+  return (
+    <div className="mt-1.5 rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)]">
+      <p className="font-medium text-[color:var(--text-primary)]">{command.label}</p>
+      <p className="mt-1">{command.description}</p>
+      {command.argumentHint ? (
+        <p className="mt-1 text-[color:var(--text-tertiary)]">
+          {t(messages.chat.slashArgumentHint, { hint: command.argumentHint })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -1612,6 +1946,10 @@ export function ChatShell({
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillsFetched, setSkillsFetched] = useState(false);
+  const [composerSelection, setComposerSelection] = useState<ComposerSelection>({ start: 0, end: 0 });
+  const [dismissedSlashPanelKey, setDismissedSlashPanelKey] = useState<string | null>(null);
+  const [highlightedSlashIndex, setHighlightedSlashIndex] = useState(0);
+  const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -1634,6 +1972,7 @@ export function ChatShell({
   const activeRunBySessionRef = useRef<Record<string, SessionRun | null>>(
     initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
   );
+  const pendingComposerSelectionRef = useRef<ComposerSelection | null>(null);
   const loadSessionRef = useRef<(sessionId: string, clearError?: boolean) => Promise<void>>(async () => {});
 
   const activeSession = useMemo(
@@ -1676,6 +2015,46 @@ export function ChatShell({
         .sort(compareSkills),
     [skills],
   );
+  const activeSlashMatch = useMemo(
+    () => parseActiveSlashMatch(text, composerSelection.start, composerSelection.end),
+    [composerSelection.end, composerSelection.start, text],
+  );
+  const slashSuggestions = useMemo(
+    () =>
+      activeSlashMatch
+        ? buildSlashSuggestions({
+            query: activeSlashMatch.query,
+            sortedSkills,
+            commands: OPENCLAW_SLASH_COMMANDS,
+          })
+        : [],
+    [activeSlashMatch, sortedSkills],
+  );
+  const activeSlashCommand = useMemo(() => {
+    if (!activeSlashMatch) {
+      return null;
+    }
+
+    return OPENCLAW_SLASH_COMMANDS.find((command) =>
+      command.key === normalizeSlashSearchTerm(activeSlashMatch.commandName) ||
+      command.aliases.some((alias) => normalizeSlashSearchTerm(alias) === normalizeSlashSearchTerm(activeSlashMatch.commandName)),
+    ) ?? null;
+  }, [activeSlashMatch]);
+  const showSlashSuggestions =
+    Boolean(activeSlashMatch?.isCursorInCommandToken) &&
+    activeSlashMatch?.dismissKey !== dismissedSlashPanelKey;
+  const showSlashHint =
+    Boolean(activeSlashCommand) &&
+    Boolean(activeSlashMatch) &&
+    !activeSlashMatch?.isCursorInCommandToken &&
+    activeSlashMatch?.argsText !== undefined;
+  const mobileSlashSheetMaxHeight = useMemo(() => {
+    if (!mobileViewportHeight) {
+      return 320;
+    }
+
+    return Math.max(180, Math.min(360, Math.round(mobileViewportHeight * 0.46)));
+  }, [mobileViewportHeight]);
   const activeRunBlocks = useMemo(() => {
     if (!activeRun || !isActiveSessionRunStatus(activeRun.status)) {
       return [];
@@ -2528,6 +2907,13 @@ export function ChatShell({
 
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+
+    if (pendingComposerSelectionRef.current) {
+      const { start, end } = pendingComposerSelectionRef.current;
+      textarea.setSelectionRange(start, end);
+      pendingComposerSelectionRef.current = null;
+      setComposerSelection({ start, end });
+    }
   }, [activeSessionId, text]);
 
   useEffect(() => {
@@ -2589,6 +2975,65 @@ export function ChatShell({
     contextUsageBySession,
     refreshSessionContext,
   ]);
+
+  useEffect(() => {
+    if (!showSlashSuggestions || skillsFetched || skillsLoading) {
+      return;
+    }
+
+    void loadSkills();
+  }, [loadSkills, showSlashSuggestions, skillsFetched, skillsLoading]);
+
+  useEffect(() => {
+    const currentLength = composerTextareaRef.current?.value.length ?? 0;
+    setComposerSelection({ start: currentLength, end: currentLength });
+    setDismissedSlashPanelKey(null);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    setHighlightedSlashIndex(0);
+  }, [activeSlashMatch?.dismissKey, activeSlashMatch?.query, slashSuggestions.length]);
+
+  useEffect(() => {
+    if (!dismissedSlashPanelKey) {
+      return;
+    }
+
+    if (!activeSlashMatch) {
+      setDismissedSlashPanelKey(null);
+      return;
+    }
+
+    if (activeSlashMatch.dismissKey !== dismissedSlashPanelKey) {
+      setDismissedSlashPanelKey(null);
+    }
+  }, [activeSlashMatch, dismissedSlashPanelKey]);
+
+  useEffect(() => {
+    if (showSlashSuggestions && skillsOpen) {
+      setSkillsOpen(false);
+    }
+  }, [showSlashSuggestions, skillsOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updateViewportHeight = () => {
+      const nextHeight = window.visualViewport?.height ?? window.innerHeight;
+      setMobileViewportHeight(nextHeight);
+    };
+
+    updateViewportHeight();
+    window.addEventListener("resize", updateViewportHeight);
+    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportHeight);
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+    };
+  }, []);
 
   const selectSession = useCallback(async (sessionId: string) => {
     logChatShellDebug("[chat-debug][chat-shell] selecting session", {
@@ -2930,8 +3375,84 @@ export function ChatShell({
     await loadSession(targetSessionId, false);
   }
 
+  function syncComposerSelectionFromElement(element: HTMLTextAreaElement) {
+    setComposerSelection({
+      start: element.selectionStart ?? 0,
+      end: element.selectionEnd ?? 0,
+    });
+  }
+
+  function updateComposerText(nextText: string, selection: ComposerSelection) {
+    if (!activeSessionId) {
+      return;
+    }
+
+    pendingComposerSelectionRef.current = selection;
+    setComposerBySession((current) => ({ ...current, [activeSessionId]: nextText }));
+  }
+
+  function handleSelectSlashSuggestion(item: SlashSuggestionItem) {
+    if (!activeSessionId || !activeSlashMatch) {
+      return;
+    }
+
+    setDismissedSlashPanelKey(null);
+    setSkillsOpen(false);
+
+    if (item.kind === "skill") {
+      handleToggleSkillSelection(item.skill);
+      const nextText = replaceComposerRange(text, activeSlashMatch.slashStart, activeSlashMatch.tokenEnd, "");
+      updateComposerText(nextText, {
+        start: activeSlashMatch.slashStart,
+        end: activeSlashMatch.slashStart,
+      });
+      composerTextareaRef.current?.focus();
+      return;
+    }
+
+    const nextText = replaceComposerRange(
+      text,
+      activeSlashMatch.slashStart,
+      activeSlashMatch.tokenEnd,
+      item.insertText,
+    );
+    const nextCursor = activeSlashMatch.slashStart + item.insertText.length;
+    updateComposerText(nextText, { start: nextCursor, end: nextCursor });
+    composerTextareaRef.current?.focus();
+  }
+
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+
+    if (showSlashSuggestions && slashSuggestions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlightedSlashIndex((current) => (current + 1) % slashSuggestions.length);
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlightedSlashIndex((current) => (current - 1 + slashSuggestions.length) % slashSuggestions.length);
+        return;
+      }
+    }
+
+    if (event.key === "Escape" && showSlashSuggestions && activeSlashMatch) {
+      event.preventDefault();
+      setDismissedSlashPanelKey(activeSlashMatch.dismissKey);
+      return;
+    }
+
+    if (event.key !== "Enter" || event.shiftKey) {
+      return;
+    }
+
+    if (showSlashSuggestions && slashSuggestions[highlightedSlashIndex]) {
+      event.preventDefault();
+      handleSelectSlashSuggestion(slashSuggestions[highlightedSlashIndex]);
       return;
     }
 
@@ -3005,8 +3526,11 @@ export function ChatShell({
       return;
     }
 
+    if (activeSlashMatch) {
+      setDismissedSlashPanelKey(activeSlashMatch.dismissKey);
+    }
     setSkillsOpen((current) => !current);
-  }, [activeSessionId, activeSessionReadOnly, loading, uploading]);
+  }, [activeSessionId, activeSessionReadOnly, activeSlashMatch, loading, uploading]);
 
   const handleRetryLoadSkills = useCallback(() => {
     void loadSkills(true);
@@ -3156,6 +3680,46 @@ export function ChatShell({
               </div>
             </>
           ) : null}
+          {showSlashSuggestions && !isCreateSessionOnly ? (
+            <>
+              <button
+                type="button"
+                aria-label={messages.common.cancel}
+                onClick={() => setDismissedSlashPanelKey(activeSlashMatch?.dismissKey ?? null)}
+                className="ui-overlay fixed inset-0 z-20 sm:hidden"
+              />
+              <div
+                className="fixed inset-x-3 z-30 sm:hidden"
+                style={{
+                  bottom: `calc(env(safe-area-inset-bottom) + ${Math.max(5.25, Math.min(8.5, mobileSlashSheetMaxHeight / 52))}rem)`,
+                }}
+              >
+                <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.slashMenuTitle}</p>
+                    <button
+                      type="button"
+                      onClick={() => setDismissedSlashPanelKey(activeSlashMatch?.dismissKey ?? null)}
+                      className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
+                    >
+                      {messages.common.cancel}
+                    </button>
+                  </div>
+                  <div className="overflow-y-auto pr-0.5" style={{ maxHeight: `${mobileSlashSheetMaxHeight}px` }}>
+                    <SlashCommandList
+                      suggestions={slashSuggestions}
+                      highlightedIndex={highlightedSlashIndex}
+                      query={activeSlashMatch?.query ?? ""}
+                      messages={messages}
+                      loadingSkills={skillsLoading}
+                      skillsError={skillsError}
+                      onSelect={handleSelectSlashSuggestion}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -3163,12 +3727,33 @@ export function ChatShell({
                 void submitActiveMessage();
               }
             }}
-            className="px-0.5 py-0.5"
+            className="relative px-0.5 py-0.5"
           >
             {activeSessionReadOnly ? (
               <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
                 {messages.chat.archivedReadOnlyNotice}
               </p>
+            ) : null}
+            {showSlashSuggestions && !isCreateSessionOnly ? (
+              <div className="absolute inset-x-0 bottom-full z-20 mb-2 hidden sm:block">
+                <div className="rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{messages.chat.slashMenuTitle}</p>
+                    <p className="text-[10px] text-[color:var(--text-tertiary)]">{messages.chat.slashKeyboardHint}</p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto pr-0.5">
+                    <SlashCommandList
+                      suggestions={slashSuggestions}
+                      highlightedIndex={highlightedSlashIndex}
+                      query={activeSlashMatch?.query ?? ""}
+                      messages={messages}
+                      loadingSkills={skillsLoading}
+                      skillsError={skillsError}
+                      onSelect={handleSelectSlashSuggestion}
+                    />
+                  </div>
+                </div>
+              </div>
             ) : null}
             <textarea
               ref={composerTextareaRef}
@@ -3179,6 +3764,16 @@ export function ChatShell({
                 }
                 const value = event.target.value;
                 setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
+                syncComposerSelectionFromElement(event.target);
+              }}
+              onSelect={(event) => {
+                syncComposerSelectionFromElement(event.currentTarget);
+              }}
+              onClick={(event) => {
+                syncComposerSelectionFromElement(event.currentTarget);
+              }}
+              onKeyUp={(event) => {
+                syncComposerSelectionFromElement(event.currentTarget);
               }}
               onKeyDown={handleComposerKeyDown}
               rows={isCentered ? 3 : 2}
@@ -3192,6 +3787,9 @@ export function ChatShell({
               } ${isCreateSessionOnly ? "cursor-default opacity-60" : ""}`}
               disabled={composerDisabled || loading}
             />
+            {!showSlashSuggestions && showSlashHint && activeSlashCommand ? (
+              <SlashCommandHint command={activeSlashCommand} messages={messages} />
+            ) : null}
             <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
               <div className="min-w-0 flex flex-wrap items-center gap-1">
                 <label className="ui-button-secondary inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]">
