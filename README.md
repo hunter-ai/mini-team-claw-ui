@@ -117,6 +117,12 @@ The provided container startup command runs:
 
 ## Usage Notes
 
+### Compatibility Notice
+
+- This project is adapted for the OpenClaw version line starting from 2026-03-13.
+- Earlier versions, and future versions after that point, may not be perfectly compatible.
+- If you are using a different OpenClaw version, verify gateway behavior, session lifecycle behavior, and configuration field names before deploying this UI in production.
+
 ### Session Archiving
 
 - MiniTeamClawUI automatically archives sessions after 7 days since the last message.
