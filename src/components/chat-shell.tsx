@@ -1660,7 +1660,11 @@ export function ChatShell({
   const activeSessionHasRenderableContent =
     Boolean(pairing) || renderableMessages.length > 0 || Boolean(activeRun);
   const isCenteredEmptyState =
-    !pairing && !activeRun && sessionMessages.length === 0 && !activeSessionReadOnly;
+    (!activeSessionId || activeSessionLoaded) &&
+    !pairing &&
+    !activeRun &&
+    sessionMessages.length === 0 &&
+    !activeSessionReadOnly;
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
