@@ -76,10 +76,6 @@ const zh = {
     creatingMember: "创建中...",
     failedToCreateUser: "创建用户失败",
     memberCreated: "成员已创建",
-    memberCreatedPairingReady: "成员已创建，设备绑定已就绪。",
-    memberCreatedPairingPending: "成员已创建，设备绑定仍待审批。",
-    memberCreatedPairingFailed: "成员已创建，但设备绑定预检查失败。",
-    memberCreatedPairingProcessing: "成员已创建，设备绑定正在处理中。",
     failedToUpdateMember: "更新成员失败",
     memberDisabled: "成员已停用",
     memberEnabled: "成员已启用",
@@ -188,12 +184,6 @@ const zh = {
     userNotFound: "未找到用户",
     activeAdminMustRemain: "至少需要保留一个启用中的管理员。",
     onlyDisabledCanBeDeleted: "只能删除已停用的用户。",
-  },
-  pairing: {
-    failedToRefreshStatus: "刷新绑定状态失败",
-    failedToApproveRequest: "批准绑定请求失败",
-    approvalInProgress: "审批进行中",
-    memberCreatedPairingPrecheckFailed: "成员已创建，但绑定预检查失败。",
   },
 } as const;
 

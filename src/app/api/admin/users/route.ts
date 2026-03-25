@@ -5,7 +5,6 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
-import { refreshGatewayPairingSummary } from "@/lib/openclaw/pairing";
 import { prisma } from "@/lib/prisma";
 
 const createSchema = z.object({
@@ -71,14 +70,5 @@ export async function POST(request: Request) {
     },
   });
 
-  const pairing = await refreshGatewayPairingSummary().catch(() => ({
-    status: "failed" as const,
-    message: messages.pairing.memberCreatedPairingPrecheckFailed,
-    deviceId: "",
-    lastPairedAt: null,
-    tokenScopes: [],
-    pendingRequests: [],
-  }));
-
-  return NextResponse.json({ user: createdUser, pairing }, { status: 201 });
+  return NextResponse.json({ user: createdUser }, { status: 201 });
 }

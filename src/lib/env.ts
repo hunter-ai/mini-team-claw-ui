@@ -7,7 +7,7 @@ const envSchema = z.object({
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
   OPENCLAW_UPLOAD_DIR_CONTAINER: z.string().default("/shared/uploads"),
   OPENCLAW_UPLOAD_DIR_HOST: z.string().default("/srv/miniteamclaw/uploads"),
-  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(15 * 1024 * 1024),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
   OPENCLAW_VERBOSE_LEVEL: z.enum(["off", "full"]).default("off"),
   APP_URL: z.string().url().optional(),
 });

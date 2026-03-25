@@ -13,7 +13,7 @@ MiniTeamClawUI adds account-based access, per-user agent mapping, session persis
 - Multi-session chat UI with persisted local history
 - Server-side attachment upload flow that maps files into OpenClaw-readable host paths
 - Gateway-backed skill listing and selection
-- Admin console for creating users, disabling accounts, password resets, and pairing-related status
+- Admin console for creating users, disabling accounts, and resetting passwords
 - Built-in English and Simplified Chinese routes
 - Docker deployment path for running the UI alongside a host OpenClaw gateway
 
@@ -33,7 +33,7 @@ MiniTeamClawUI adds account-based access, per-user agent mapping, session persis
 2. The Next.js server opens and manages the connection to the OpenClaw gateway.
 3. Chat sessions, streamed run events, cached messages, attachments, and user metadata are stored locally in PostgreSQL.
 4. Uploaded files are saved into a shared directory and sent to OpenClaw as host-visible file references.
-5. Admins manage accounts and can monitor pairing state from the built-in admin area.
+5. Admins manage accounts from the built-in admin area.
 
 This separation keeps gateway credentials and operator capabilities on the server side.
 
@@ -53,7 +53,6 @@ This separation keeps gateway credentials and operator capabilities on the serve
 - Assign each user an `openclawAgentId`
 - Enable, disable, and delete users
 - Force password resets
-- Surface gateway pairing state in the admin workflow
 
 ### Localization
 
@@ -88,6 +87,8 @@ This separation keeps gateway credentials and operator capabilities on the serve
 ## Quick Start
 
 ### Local Development
+
+Before first use, manually approve the device pairing request from within your OpenClaw environment.
 
 ```bash
 npm install
@@ -126,7 +127,7 @@ The project validates environment variables in `src/lib/env.ts`.
 | `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
 | `OPENCLAW_UPLOAD_DIR_CONTAINER` | No | Upload directory as seen by this app. Default: `/shared/uploads`. |
 | `OPENCLAW_UPLOAD_DIR_HOST` | No | Matching host path that OpenClaw can read. Default: `/srv/miniteamclaw/uploads`. |
-| `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `15728640` (15 MiB). |
+| `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `1073741824` (1 GiB). |
 | `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
 | `APP_URL` | No | Public app URL used where absolute URLs are needed. |
 | `SEED_ADMIN_USERNAME` | Seed only | Initial admin username used by `npm run db:seed`. |
@@ -194,7 +195,7 @@ Issues and pull requests are welcome. If you plan to contribute code, keep these
 
 - This project uses the App Router in Next.js 16.
 - Gateway communication is server-mediated.
-- Changes that affect upload paths, session persistence, or pairing flows should be tested carefully because they cross application boundaries.
+- Changes that affect upload paths or session persistence should be tested carefully because they cross application boundaries.
 
 ## License
 

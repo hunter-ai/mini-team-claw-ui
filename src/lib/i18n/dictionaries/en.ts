@@ -76,10 +76,6 @@ const en = {
     creatingMember: "Creating...",
     failedToCreateUser: "Failed to create user",
     memberCreated: "Member created",
-    memberCreatedPairingReady: "Member created. Device pairing is ready.",
-    memberCreatedPairingPending: "Member created. Device pairing is still pending approval.",
-    memberCreatedPairingFailed: "Member created. Device pairing precheck failed.",
-    memberCreatedPairingProcessing: "Member created. Device pairing is being processed.",
     failedToUpdateMember: "Failed to update member",
     memberDisabled: "Member disabled",
     memberEnabled: "Member enabled",
@@ -188,12 +184,6 @@ const en = {
     userNotFound: "User not found",
     activeAdminMustRemain: "At least one active admin must remain.",
     onlyDisabledCanBeDeleted: "Only disabled users can be deleted.",
-  },
-  pairing: {
-    failedToRefreshStatus: "Failed to refresh pairing status",
-    failedToApproveRequest: "Failed to approve pairing request",
-    approvalInProgress: "Approval in progress",
-    memberCreatedPairingPrecheckFailed: "Member created, but pairing precheck failed.",
   },
 } as const;
 

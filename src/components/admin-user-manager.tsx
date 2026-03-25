@@ -13,23 +13,6 @@ type AdminUser = {
   isActive: boolean;
 };
 
-type GatewayPairingSummary = {
-  status: "healthy" | "pairing_required" | "approving" | "failed";
-  message: string | null;
-  deviceId: string;
-  lastPairedAt: string | null;
-  tokenScopes: string[];
-  pendingRequests: Array<{
-    requestId: string | null;
-    requestedAt: string | null;
-    scopes: string[];
-    clientId: string | null;
-    clientMode: string | null;
-    clientPlatform: string | null;
-    message: string | null;
-  }>;
-};
-
 export function AdminUserManager({
   initialUsers,
   locale,
@@ -74,10 +57,7 @@ export function AdminUserManager({
 
     setCreateLoading(false);
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      pairing?: GatewayPairingSummary;
-    };
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
     if (!response.ok) {
       setMessage(payload.error ?? messages.admin.failedToCreateUser);
@@ -85,19 +65,7 @@ export function AdminUserManager({
     }
 
     setForm({ username: "", password: "", openclawAgentId: "", role: "MEMBER" });
-    if (payload.pairing) {
-      if (payload.pairing.status === "healthy") {
-        setMessage(messages.admin.memberCreatedPairingReady);
-      } else if (payload.pairing.status === "pairing_required") {
-        setMessage(messages.admin.memberCreatedPairingPending);
-      } else if (payload.pairing.status === "failed") {
-        setMessage(messages.admin.memberCreatedPairingFailed);
-      } else {
-        setMessage(messages.admin.memberCreatedPairingProcessing);
-      }
-    } else {
-      setMessage(messages.admin.memberCreated);
-    }
+    setMessage(messages.admin.memberCreated);
     await refreshUsers();
   }
 
