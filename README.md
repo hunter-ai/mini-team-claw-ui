@@ -1,44 +1,201 @@
 # MiniTeamClawUI
 
- Mobile-first WebUI for sharing a single host OpenClaw gateway across a small team, with per-member login, per-member agent mapping, multi-session chat, and attachment prompts.
+Mobile-first Next.js web UI for sharing a single OpenClaw gateway across a small team.
 
-## Stack
+MiniTeamClawUI adds account-based access, per-user agent mapping, session persistence, attachment handling, and a lightweight admin console on top of an existing OpenClaw deployment. The browser never talks to OpenClaw directly; the Next.js server brokers gateway access and stores local application state.
+
+[中文说明](./README.zh-CN.md)
+
+## Highlights
+
+- Per-user login with cookie-based sessions and Argon2 password hashing
+- Per-member `openclawAgentId` mapping for routing users to different OpenClaw agents
+- Multi-session chat UI with persisted local history
+- Server-side attachment upload flow that maps files into OpenClaw-readable host paths
+- Gateway-backed skill listing and selection
+- Admin console for creating users, disabling accounts, password resets, and pairing-related status
+- Built-in English and Simplified Chinese routes
+- Docker deployment path for running the UI alongside a host OpenClaw gateway
+
+## Tech Stack
 
 - Next.js 16 App Router
-- Prisma + PostgreSQL
-- Cookie-based auth with argon2id password verification
-- OpenClaw Gateway WebSocket bridge from the server
-- Docker for the WebUI, host-native OpenClaw on the same machine
+- React 19
+- TypeScript
+- Prisma
+- PostgreSQL
+- WebSocket bridge to OpenClaw Gateway
+- Tailwind CSS 4
 
-## Environment
+## How It Works
 
-Copy `.env.example` to `.env` and adjust:
+1. Users authenticate against the local app database.
+2. The Next.js server opens and manages the connection to the OpenClaw gateway.
+3. Chat sessions, streamed run events, cached messages, attachments, and user metadata are stored locally in PostgreSQL.
+4. Uploaded files are saved into a shared directory and sent to OpenClaw as host-visible file references.
+5. Admins manage accounts and can monitor pairing state from the built-in admin area.
 
-- `OPENCLAW_GATEWAY_URL` should point from the container to the host gateway, typically `ws://host.docker.internal:19001`
-- `OPENCLAW_UPLOAD_DIR_HOST` must be the host path that OpenClaw can read
-- `OPENCLAW_UPLOAD_DIR_CONTAINER` must match the bind-mounted path inside the container
-- `SESSION_SECRET` must be at least 32 characters
+This separation keeps gateway credentials and operator capabilities on the server side.
 
-## First Run
+## Features
+
+### Chat
+
+- Create and resume chat sessions
+- Persist message history for sessions created through this UI
+- Stream assistant responses and run activity
+- Attach files to prompts
+- Use slash-command and gateway skill integrations
+
+### Administration
+
+- Create `ADMIN` and `MEMBER` users
+- Assign each user an `openclawAgentId`
+- Enable, disable, and delete users
+- Force password resets
+- Surface gateway pairing state in the admin workflow
+
+### Localization
+
+- Default English route group
+- Simplified Chinese route group at `/zh`
+
+## Project Structure
+
+```text
+.
+|-- src/app/                 # App Router pages, layouts, and API routes
+|-- src/components/          # Client and server UI components
+|-- src/lib/                 # Auth, sessions, gateway bridge, i18n, utilities
+|-- prisma/                  # Prisma schema and seed script
+|-- public/                  # Static assets
+|-- scripts/                 # Small project helper scripts
+|-- Dockerfile
+|-- docker-compose.yml
+|-- .env.dev.example
+|-- .env.docker.example
+|-- .env.example
+```
+
+## Requirements
+
+- Node.js 22 or newer
+- npm 10 or newer
+- PostgreSQL 16 or compatible PostgreSQL instance
+- A reachable OpenClaw gateway
+- A shared upload directory visible to both this app and OpenClaw
+
+## Quick Start
+
+### Local Development
 
 ```bash
 npm install
-npx prisma generate
+npm run env:dev
+npm run prisma:generate
 npm run db:push
 npm run db:seed
 npm run dev
 ```
 
-For Docker:
+Open `http://localhost:3000` after the dev server starts.
+
+### Docker Compose
 
 ```bash
-cp .env.example .env
-mkdir -p /srv/miniteamclaw/uploads
+npm run env:docker
+mkdir -p /home/openclaw/miniteamclaw/uploads
 docker compose up --build
 ```
 
-## Notes
+The provided container startup command runs:
 
-- The browser never connects to OpenClaw directly. The WebUI server handles Gateway auth and chat requests.
-- Attachments are saved into the bind-mounted host directory and sent to OpenClaw as `MEDIA:<host-path>` lines.
-- Message history is cached in the app database for the sessions created through this UI.
+- `npx prisma db push`
+- `npm run db:seed`
+- `npm run start`
+
+## Environment Variables
+
+The project validates environment variables in `src/lib/env.ts`.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma. |
+| `SESSION_SECRET` | Yes | Session signing secret. Must be at least 32 characters. |
+| `OPENCLAW_GATEWAY_URL` | Yes | WebSocket URL for the OpenClaw gateway. |
+| `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
+| `OPENCLAW_UPLOAD_DIR_CONTAINER` | No | Upload directory as seen by this app. Default: `/shared/uploads`. |
+| `OPENCLAW_UPLOAD_DIR_HOST` | No | Matching host path that OpenClaw can read. Default: `/srv/miniteamclaw/uploads`. |
+| `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `15728640` (15 MiB). |
+| `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
+| `APP_URL` | No | Public app URL used where absolute URLs are needed. |
+| `SEED_ADMIN_USERNAME` | Seed only | Initial admin username used by `npm run db:seed`. |
+| `SEED_ADMIN_PASSWORD` | Seed only | Initial admin password used by `npm run db:seed`. |
+| `SEED_ADMIN_AGENT_ID` | Seed only | Initial admin `openclawAgentId`. Defaults to `main`. |
+
+## Environment Presets
+
+Helper script:
+
+```bash
+npm run env:dev
+npm run env:docker
+```
+
+These commands copy one of the bundled templates to `.env`:
+
+- `.env.dev.example`
+- `.env.docker.example`
+
+## Database
+
+The Prisma schema defines the following main entities:
+
+- `User`
+- `UserSession`
+- `ChatSession`
+- `ChatMessageCache`
+- `Attachment`
+- `ChatRun`
+- `ChatRunEvent`
+- `GatewayOperatorIdentity`
+
+The app stores local chat/session state even though model execution happens through OpenClaw.
+
+## Available Scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start the Next.js development server. |
+| `npm run build` | Build the production app. |
+| `npm run start` | Start the production server. |
+| `npm run lint` | Run ESLint. |
+| `npm run env:dev` | Copy `.env.dev.example` to `.env`. |
+| `npm run env:docker` | Copy `.env.docker.example` to `.env`. |
+| `npm run prisma:generate` | Generate the Prisma client. |
+| `npm run db:push` | Push the Prisma schema to the database. |
+| `npm run db:seed` | Seed the initial admin user if seed env vars are set. |
+
+## Deployment Notes
+
+- The browser does not connect to OpenClaw directly.
+- The web server must be able to reach the gateway over WebSocket.
+- The upload directory mapping must be correct on both the app side and the OpenClaw side.
+- The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
+- In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:19001`.
+
+## Current Scope
+
+This repository is focused on a practical self-hosted team UI. It is not trying to replace OpenClaw itself. The core responsibility is account management, session orchestration, and a browser-friendly frontend around the gateway.
+
+## Contributing
+
+Issues and pull requests are welcome. If you plan to contribute code, keep these constraints in mind:
+
+- This project uses the App Router in Next.js 16.
+- Gateway communication is server-mediated.
+- Changes that affect upload paths, session persistence, or pairing flows should be tested carefully because they cross application boundaries.
+
+## License
+
+No license file is included in this repository at the moment. Add a `LICENSE` file before publishing or accepting open-source contributions under a defined license.
