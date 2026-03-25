@@ -37,6 +37,7 @@ export type ChatResult = {
   content: string;
   runId: string | null;
   status: string | null;
+  renderMode: "markdown" | "plain_text";
 };
 
 export type GatewayToolEventStatus = "started" | "running" | "completed" | "failed";
@@ -78,6 +79,17 @@ export type GatewaySkillListItem = {
   missing: GatewaySkillMissing;
   install: GatewaySkillInstallItem[];
 };
+
+type GatewayChatTerminalEvent =
+  | {
+      type: "final";
+      content: string;
+      renderMode: "markdown" | "plain_text";
+    }
+  | {
+      type: "error";
+      errorMessage: string;
+    };
 
 type StreamHandlers = {
   onStarted?: (meta: { runId: string | null; status: string | null }) => void | Promise<void>;
@@ -414,6 +426,75 @@ function normalizeGatewayToolEvent(payload: Record<string, unknown> | undefined)
   };
 }
 
+function extractTextFromMessageContent(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const parts = value
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+
+      const type = readString(record.type);
+      if (type === "text") {
+        return readString(record.text) ?? readString(record.content);
+      }
+
+      const nestedText = readNestedString(asRecord(record.text), "value", "text");
+      return nestedText ?? readString(record.content);
+    })
+    .filter((part): part is string => Boolean(part));
+
+  if (!parts.length) {
+    return null;
+  }
+
+  return parts.join("\n\n").trim() || null;
+}
+
+function extractChatTerminalEvent(payload: Record<string, unknown> | undefined): GatewayChatTerminalEvent | null {
+  const root = asRecord(payload) ?? {};
+  const state = readNestedString(root, "state", "status");
+  if (!state) {
+    return null;
+  }
+
+  const normalizedState = state.toLowerCase();
+  if (normalizedState === "final") {
+    const message = readNestedValue(root, "message", "reply", "content");
+    const messageRecord = asRecord(message);
+    const content =
+      (typeof message === "string" ? message.trim() : null) ??
+      readNestedString(messageRecord, "text", "content", "message") ??
+      extractTextFromMessageContent(messageRecord?.content) ??
+      readNestedString(root, "reply", "content", "message") ??
+      "OpenClaw completed without returning text.";
+
+    return {
+      type: "final",
+      content,
+      renderMode: "plain_text",
+    };
+  }
+
+  if (normalizedState === "error") {
+    const message =
+      readNestedString(root, "errorMessage", "error", "message") ??
+      readNestedString(asRecord(root.message), "error", "message") ??
+      "OpenClaw command failed";
+
+    return {
+      type: "error",
+      errorMessage: message,
+    };
+  }
+
+  return null;
+}
+
 function extractChatSendAck(payload: Record<string, unknown> | undefined) {
   const root = asRecord(payload) ?? {};
   const data = asRecord(root.data);
@@ -519,6 +600,7 @@ function summarizeGatewayFrame(frame: GatewayEvent) {
   const payload = asRecord(frame.payload);
   const data = asRecord(payload?.data);
   const stream = readString(payload?.stream);
+  const state = readString(payload?.state);
   const phase = readString(data?.phase);
   const delta = readString(data?.delta);
   const scope = extractChatEventScope(frame.payload);
@@ -526,6 +608,7 @@ function summarizeGatewayFrame(frame: GatewayEvent) {
   return {
     event: frame.event,
     stream,
+    state,
     phase,
     scope,
     deltaLength: delta?.length ?? 0,
@@ -836,6 +919,7 @@ export class OpenClawGatewayClient {
     let output = "";
     let runId: string | null = null;
     let status: string | null = null;
+    let renderMode: ChatResult["renderMode"] = "markdown";
     let ignoredEventCount = 0;
     let acceptedEventCount = 0;
     const bufferedEvents: GatewayEvent[] = [];
@@ -883,6 +967,7 @@ export class OpenClawGatewayClient {
             content: output,
             runId,
             status,
+            renderMode: "markdown",
           } satisfies ChatResult;
         }
 
@@ -938,6 +1023,20 @@ export class OpenClawGatewayClient {
       const payload = frame.payload ?? {};
       const stream = payload.stream;
       const data = (payload.data as Record<string, unknown> | undefined) ?? {};
+      const chatTerminalEvent = frame.event === "chat" ? extractChatTerminalEvent(payload) : null;
+
+      if (chatTerminalEvent?.type === "final") {
+        output = chatTerminalEvent.content;
+        status = "ok";
+        renderMode = chatTerminalEvent.renderMode;
+        return true;
+      }
+
+      if (chatTerminalEvent?.type === "error") {
+        status = "error";
+        await handlers?.onError?.(chatTerminalEvent.errorMessage);
+        throw new Error(chatTerminalEvent.errorMessage);
+      }
 
       if (stream === "assistant" && typeof data.delta === "string") {
         output += data.delta;
@@ -983,6 +1082,7 @@ export class OpenClawGatewayClient {
           content: output,
           runId,
           status,
+          renderMode,
         } satisfies ChatResult;
       }
     }
@@ -1022,7 +1122,7 @@ export class OpenClawGatewayClient {
       outputLength: output.length,
     });
 
-    return { content: output, runId, status } satisfies ChatResult;
+    return { content: output, runId, status, renderMode } satisfies ChatResult;
   }
 
   async listPairingRequests() {

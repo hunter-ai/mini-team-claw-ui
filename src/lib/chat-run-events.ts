@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 
+export type ClientAssistantRenderMode = "markdown" | "plain_text";
+
 export type ClientToolEventPayload = {
   key: string;
   callId: string | null;
@@ -34,6 +36,7 @@ export type ClientRunHistoryItem = {
   runId: string;
   userMessageId: string | null;
   assistantMessageId: string | null;
+  assistantRenderMode: ClientAssistantRenderMode;
   status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
   draftAssistantContent: string;
   errorMessage: string | null;
@@ -138,6 +141,10 @@ function readNonEmptyString(value: unknown) {
 
 function readNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readAssistantRenderMode(value: unknown): ClientAssistantRenderMode {
+  return value === "plain_text" ? "plain_text" : "markdown";
 }
 
 function readToolPayload(value: Prisma.JsonValue | null): ClientToolEventPayload | null {
@@ -406,10 +413,14 @@ export function serializeRunHistoryItem(run: {
   updatedAt: Date;
   events: EventRecord[];
 }): ClientRunHistoryItem {
+  const doneEvent = [...run.events].reverse().find((event) => event.type === "done");
+  const donePayload = asRecord(doneEvent?.payloadJson ?? null);
+
   return {
     runId: run.id,
     userMessageId: run.userMessageId,
     assistantMessageId: run.assistantMessageId,
+    assistantRenderMode: readAssistantRenderMode(donePayload?.renderMode),
     status: run.status,
     draftAssistantContent: run.draftAssistantContent,
     errorMessage: run.errorMessage,

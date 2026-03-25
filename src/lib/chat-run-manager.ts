@@ -274,7 +274,7 @@ class ChatRunManager {
         finalContentLength: result.content.length,
       });
 
-      const completed = await completeChatRun(run.id, result.content);
+      const completed = await completeChatRun(run.id, result.content, result.renderMode);
       if (completed.event) {
         logChatRunManagerDebug("[chat-debug][run-manager] persisted done event", {
           runId: run.id,

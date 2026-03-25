@@ -527,7 +527,11 @@ export async function markChatRunPairingRequired(
   });
 }
 
-export async function completeChatRun(runId: string, content: string) {
+export async function completeChatRun(
+  runId: string,
+  content: string,
+  renderMode: "markdown" | "plain_text" = "markdown",
+) {
   return prisma.$transaction(async (tx) => {
     const run = await tx.chatRun.findUniqueOrThrow({
       where: { id: runId },
@@ -554,6 +558,7 @@ export async function completeChatRun(runId: string, content: string) {
         type: "done",
         payloadJson: {
           content: finalContent,
+          renderMode,
         },
       },
     });

@@ -10,6 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { v4 as uuidv4 } from "uuid";
 import type {
+  ClientAssistantRenderMode,
   ClientChatRunEvent,
   ClientRunActivityEntry,
   ClientRunHistoryItem,
@@ -152,6 +153,7 @@ type AssistantRenderBlock =
       kind: "markdown_text";
       key: string;
       content: string;
+      renderMode: ClientAssistantRenderMode;
       streaming?: boolean;
     }
   | {
@@ -406,6 +408,7 @@ function buildRenderableAssistantBlocks(args: {
   const steps = summarizeRenderableSteps(args.run);
   const blocks: AssistantRenderBlock[] = [];
   const content = args.content;
+  const renderMode = args.run?.assistantRenderMode ?? "markdown";
 
   if (args.segmentation && args.segmentation.stepKeys.length > 0) {
     const stepMap = new Map(steps.map((step) => [getActivityEntryRenderKey(step), step]));
@@ -417,6 +420,7 @@ function buildRenderableAssistantBlocks(args: {
           kind: "markdown_text",
           key: `text:${index}:${stepKey}`,
           content: segment,
+          renderMode,
         });
       }
 
@@ -442,6 +446,7 @@ function buildRenderableAssistantBlocks(args: {
         kind: "markdown_text",
         key: "text:trailing",
         content: trailingText,
+        renderMode,
       });
     }
 
@@ -457,6 +462,7 @@ function buildRenderableAssistantBlocks(args: {
           kind: "markdown_text",
           key: `text:${checkpoint.seq}:${checkpoint.beforeStepKey}`,
           content: checkpoint.text,
+          renderMode,
         });
       }
 
@@ -488,6 +494,7 @@ function buildRenderableAssistantBlocks(args: {
         kind: "markdown_text",
         key: "text:trailing",
         content: trailingText,
+        renderMode,
       });
     }
 
@@ -500,6 +507,7 @@ function buildRenderableAssistantBlocks(args: {
         kind: "markdown_text",
         key: "text:full",
         content,
+        renderMode,
       });
     }
   }
@@ -509,6 +517,7 @@ function buildRenderableAssistantBlocks(args: {
       kind: "markdown_text",
       key: "text:only",
       content,
+      renderMode,
     });
   }
 
@@ -651,10 +660,12 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
 function AssistantTextBlock({
   content,
   messages,
+  renderMode,
   streaming = false,
 }: {
   content: string;
   messages: Dictionary;
+  renderMode: ClientAssistantRenderMode;
   streaming?: boolean;
 }) {
   if (!content.trim()) {
@@ -663,7 +674,7 @@ function AssistantTextBlock({
 
   return (
     <div className="whitespace-normal">
-      <MessageBody content={content} isUser={false} />
+      <MessageBody content={content} isUser={false} assistantRenderMode={renderMode} />
       {streaming ? <StreamingSpinner messages={messages} /> : null}
     </div>
   );
@@ -863,9 +874,11 @@ function SkillListItemCard({
 function MessageBody({
   content,
   isUser,
+  assistantRenderMode = "markdown",
 }: {
   content: string;
   isUser: boolean;
+  assistantRenderMode?: ClientAssistantRenderMode;
 }) {
   if (!content.trim()) {
     return null;
@@ -873,6 +886,14 @@ function MessageBody({
 
   if (isUser) {
     return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
+  }
+
+  if (assistantRenderMode === "plain_text") {
+    return (
+      <pre className="whitespace-pre-wrap break-words rounded-[0.65rem] bg-[color:var(--surface-subtle)] px-3 py-2 text-sm leading-7 text-[color:var(--text-primary)]">
+        {content}
+      </pre>
+    );
   }
 
   return (
@@ -1005,7 +1026,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
           <div className="space-y-3">
             {assistantBlocks.map((block) => {
               if (block.kind === "markdown_text") {
-                return <AssistantTextBlock key={block.key} content={block.content} messages={messages} streaming={block.streaming ? true : false} />;
+                return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming ? true : false} />;
               }
 
               if (block.kind === "tool_step") {
@@ -1065,7 +1086,7 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
         <div className="space-y-3">
           {activeRunBlocks.map((block) => {
             if (block.kind === "markdown_text") {
-              return <AssistantTextBlock key={block.key} content={block.content} messages={messages} streaming={block.streaming} />;
+              return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming} />;
             }
 
             if (block.kind === "tool_step") {
@@ -1579,6 +1600,7 @@ export function ChatShell({
           runId: activeRun.id,
           userMessageId: null,
           assistantMessageId: activeRun.assistantMessageId,
+          assistantRenderMode: "markdown",
           status: activeRun.status,
           draftAssistantContent: activeRun.draftAssistantContent,
           errorMessage: activeRun.errorMessage,
