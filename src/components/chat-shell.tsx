@@ -1253,7 +1253,45 @@ function StreamingSpinner({ messages }: { messages: Dictionary }) {
 }
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return <span aria-hidden="true" className="text-sm leading-none">{collapsed ? "»" : "«"}</span>;
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      {collapsed ? (
+        <>
+          <path
+            d="M6.5 5.5 10.5 10l-4 4.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.75"
+          />
+          <path
+            d="M10.5 5.5 14.5 10l-4 4.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.75"
+          />
+        </>
+      ) : (
+        <>
+          <path
+            d="M13.5 5.5 9.5 10l4 4.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.75"
+          />
+          <path
+            d="M9.5 5.5 5.5 10l4 4.5"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.75"
+          />
+        </>
+      )}
+    </svg>
+  );
 }
 
 function ChatBubbleIcon() {
@@ -1322,26 +1360,6 @@ function StopSquareIcon() {
   );
 }
 
-function GaugeIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
-      <path
-        d="M3.75 13.75a6.25 6.25 0 1 1 12.5 0"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M10 10l3-2"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      />
-      <circle cx="10" cy="10" r="1.125" fill="currentColor" />
-    </svg>
-  );
-}
-
 function formatCompactTokenCount(value: number) {
   const normalized = Math.max(0, value);
   if (normalized >= 1000) {
@@ -1353,47 +1371,182 @@ function formatCompactTokenCount(value: number) {
   return new Intl.NumberFormat("en-US").format(Math.round(normalized));
 }
 
+function formatUsagePercent(value: number) {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
 function ComposerContextUsage({
   usage,
   loading,
+  messages,
 }: {
   usage: SessionContextUsage | null;
   loading: boolean;
+  messages: Dictionary;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (!containerRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   if (!usage && !loading) {
     return null;
   }
 
   const usageRatio = usage?.usageRatio ?? 0;
-  const toneClassName =
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference * (1 - usageRatio);
+  const progressClassName =
     usage && usageRatio >= 1
-      ? "text-red-600"
+      ? "stroke-red-500"
       : usage && usageRatio >= 0.85
-        ? "text-amber-600"
-        : "text-[color:var(--text-secondary)]";
-  const trackClassName =
-    usage && usageRatio >= 1
-      ? "bg-red-500"
-      : usage && usageRatio >= 0.85
-        ? "bg-amber-500"
-        : "bg-[color:var(--text-primary)]";
+        ? "stroke-amber-500"
+        : "stroke-[color:var(--text-primary)]";
+  const used = usage?.usedTokens ?? 0;
+  const total = usage?.totalTokens ?? 0;
+  const remaining = usage?.remainingTokens ?? 0;
+  const usagePercent = formatUsagePercent(usageRatio);
+  const title = loading && !usage
+    ? messages.chat.contextLoading
+    : `${messages.chat.contextSummaryLabel} ${usagePercent}`;
+  const handleHoverOpen = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      setOpen(true);
+    }
+  };
+  const handleHoverClose = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      setOpen(false);
+    }
+  };
 
   return (
-    <div className={`mt-1.5 inline-flex max-w-full items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2 py-1 text-[10px] sm:text-[11px] ${toneClassName}`}>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0">
-          <GaugeIcon />
-        </span>
-        <span className="truncate font-medium">
-          {loading && !usage ? "..." : `${formatCompactTokenCount(usage?.usedTokens ?? 0)}/${formatCompactTokenCount(usage?.totalTokens ?? 0)}`}
-        </span>
-      </div>
-      <div className="h-1.5 min-w-14 flex-1 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)] sm:min-w-16">
-        <div
-          className={`h-full rounded-full transition-[width] duration-300 ${trackClassName} ${loading && !usage ? "animate-pulse opacity-50" : ""}`}
-          style={{ width: `${Math.max(8, Math.round((usage?.usageRatio ?? 0.18) * 100))}%` }}
-        />
-      </div>
+    <div
+      ref={containerRef}
+      className="relative inline-flex shrink-0 items-center justify-center"
+      onMouseEnter={handleHoverOpen}
+      onMouseLeave={handleHoverClose}
+    >
+      <button
+        type="button"
+        className="inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-[color:var(--text-secondary)] outline-none transition hover:text-[color:var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[color:var(--border-strong)]"
+        aria-label={title}
+        aria-expanded={open}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className={`size-6 -rotate-90 sm:size-6 ${loading && !usage ? "animate-pulse opacity-60" : ""}`}
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            stroke="rgba(15,23,42,0.14)"
+            strokeWidth="2.5"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            className={`transition-[stroke-dashoffset,stroke] duration-300 ${progressClassName}`}
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+          />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-56 max-w-[calc(100vw-2rem)] rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] p-3 text-left shadow-[var(--shadow-panel)] backdrop-blur">
+          <span
+            aria-hidden="true"
+            className="absolute bottom-[-0.35rem] left-3 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">
+              {messages.chat.contextSummaryLabel}
+            </p>
+            <span className="text-[11px] font-semibold text-[color:var(--text-secondary)]">
+              {loading && !usage ? "..." : usagePercent}
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)]">
+            <div
+              className={`h-full rounded-full transition-[width,background-color] duration-300 ${
+                usage && usageRatio >= 1
+                  ? "bg-red-500"
+                  : usage && usageRatio >= 0.85
+                    ? "bg-amber-500"
+                    : "bg-[color:var(--text-primary)]"
+              } ${loading && !usage ? "animate-pulse opacity-50" : ""}`}
+              style={{ width: `${Math.max(4, Math.round((loading && !usage ? 0.12 : usageRatio) * 100))}%` }}
+            />
+          </div>
+          <div className="mt-2.5 space-y-1.5 text-[11px] text-[color:var(--text-secondary)]">
+            <div className="flex items-center justify-between gap-3">
+              <span>{messages.chat.contextUsedLabel}</span>
+              <span className="font-medium text-[color:var(--text-primary)]">
+                {loading && !usage ? "..." : formatCompactTokenCount(used)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{messages.chat.contextTotalLabel}</span>
+              <span className="font-medium text-[color:var(--text-primary)]">
+                {loading && !usage ? "..." : formatCompactTokenCount(total)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{messages.chat.contextRemainingLabel}</span>
+              <span className="font-medium text-[color:var(--text-primary)]">
+                {loading && !usage ? "..." : formatCompactTokenCount(remaining)}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1432,7 +1585,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
       className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
         isUser
           ? "ml-auto w-fit max-w-[min(100%,44rem)] border-[rgba(17,24,39,0.18)] bg-[#d1d5db] text-[color:var(--text-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
-          : "w-full max-w-[min(124ch,100%)] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
+          : "mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
       }`}
     >
       <div>
@@ -1497,7 +1650,7 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
   messages: Dictionary;
 }) {
   return (
-    <div className="w-full max-w-[min(124ch,100%)] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
+    <div className="mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
       <div>
         <div className="space-y-3">
           {activeRunBlocks.map((block) => {
@@ -1562,7 +1715,7 @@ const ChatSidebar = memo(function ChatSidebar({
   onOpenRenameModal: (session: Session) => void;
   onLoadMoreSessions: () => void;
 }) {
-  const GROUP_PAGE_SIZE = 8;
+  const GROUP_PAGE_SIZE = 20;
   const collapsedSessions = [...recentSessions, ...archivedSessions];
   const [recentExpanded, setRecentExpanded] = useState(true);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -1723,7 +1876,7 @@ const ChatSidebar = memo(function ChatSidebar({
     <aside
       className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.96)] shadow-[var(--shadow-panel)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
         drawerOpen ? "translate-x-0" : "-translate-x-[108%] lg:translate-x-0"
-      } ${isSidebarCollapsed ? "lg:w-[3.5rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
+      } ${isSidebarCollapsed ? "lg:w-[4.25rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
     >
       <div className="border-b border-[color:var(--border-subtle)] px-2 py-1.5 sm:px-2.5">
         {isSidebarCollapsed ? (
@@ -1731,7 +1884,7 @@ const ChatSidebar = memo(function ChatSidebar({
             <button
               type="button"
               onClick={onExpandSidebar}
-              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0 text-xs [&>span]:block [&>span]:-translate-y-px"
+              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0"
               aria-label={messages.nav.expandSidebar}
               title={messages.nav.expandSidebar}
             >
@@ -1749,7 +1902,7 @@ const ChatSidebar = memo(function ChatSidebar({
                 <button
                   type="button"
                   onClick={onCollapseSidebar}
-                  className="ui-button-secondary hidden size-8 shrink-0 items-center justify-center rounded-full p-0 text-xs [&>span]:block [&>span]:-translate-y-px lg:inline-flex"
+                  className="ui-button-secondary hidden size-8 shrink-0 items-center justify-center rounded-full p-0 lg:inline-flex"
                   aria-label={messages.nav.collapseSidebar}
                   title={messages.nav.collapseSidebar}
                 >
@@ -1781,7 +1934,7 @@ const ChatSidebar = memo(function ChatSidebar({
 
       <div
         ref={sessionsScrollerRef}
-        className={`min-h-0 flex-1 overflow-y-auto py-1.5 ${isSidebarCollapsed ? "px-1" : "px-1.5"}`}
+        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1.5 ${isSidebarCollapsed ? "px-1" : "px-1.5"}`}
       >
         <div className="space-y-1">
           {isSidebarCollapsed ? (
@@ -1889,7 +2042,7 @@ export function ChatShell({
   initialActiveRun: SessionRun | null;
   user: UserShape;
 }) {
-  const pageSize = 30;
+  const pageSize = 20;
   const pathname = usePathname();
   const localeFetch = useCallback(
     (input: string, init?: RequestInit) =>
@@ -1950,14 +2103,20 @@ export function ChatShell({
   const [dismissedSlashPanelKey, setDismissedSlashPanelKey] = useState<string | null>(null);
   const [highlightedSlashIndex, setHighlightedSlashIndex] = useState(0);
   const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
+  const [dockedComposerHeight, setDockedComposerHeight] = useState(0);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const messagesScrollerRef = useRef<HTMLDivElement | null>(null);
+  const messagesBottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const dockedComposerRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const shouldSnapMessagesToBottomRef = useRef(true);
   const shouldStickMessagesToBottomRef = useRef(false);
   const isProgrammaticMessagesScrollRef = useRef(false);
+  const isAutoScrollingToBottomRef = useRef(false);
+  const showScrollToBottomRef = useRef(false);
+  const isBottomSentinelVisibleRef = useRef(true);
   const eventSourcesRef = useRef<Record<string, EventSource>>({});
   const reconnectTimersRef = useRef<Record<string, number>>({});
   const reconnectAttemptsRef = useRef<Record<string, number>>({});
@@ -1974,6 +2133,7 @@ export function ChatShell({
   );
   const pendingComposerSelectionRef = useRef<ComposerSelection | null>(null);
   const loadSessionRef = useRef<(sessionId: string, clearError?: boolean) => Promise<void>>(async () => {});
+  const skillsPopoverRef = useRef<HTMLDivElement | null>(null);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -2174,8 +2334,53 @@ export function ChatShell({
       return true;
     }
 
-    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
+    if (isBottomSentinelVisibleRef.current) {
+      return true;
+    }
+
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48;
   }, []);
+
+  useEffect(() => {
+    showScrollToBottomRef.current = showScrollToBottom;
+  }, [showScrollToBottom]);
+
+  useLayoutEffect(() => {
+    const composer = dockedComposerRef.current;
+    if (!composer) {
+      setDockedComposerHeight(0);
+      return;
+    }
+
+    const updateHeight = () => {
+      setDockedComposerHeight(composer.getBoundingClientRect().height);
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [
+    activeSessionId,
+    activeSessionReadOnly,
+    error,
+    isCenteredEmptyState,
+    loading,
+    pendingAttachments.length,
+    selectedSkills.length,
+    skillsOpen,
+    showSlashSuggestions,
+    text,
+    uploading,
+  ]);
 
   const setSessionRunState = useCallback((sessionId: string, nextState: RunState) => {
     setRunStateBySession((current) =>
@@ -2779,6 +2984,49 @@ export function ChatShell({
   }, [loadSkills, skillsFetched, skillsOpen]);
 
   useEffect(() => {
+    if (!skillsOpen) {
+      return;
+    }
+
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSkillsOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [skillsOpen]);
+
+  useEffect(() => {
+    if (!skillsOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (skillsPopoverRef.current?.contains(target)) {
+        return;
+      }
+
+      setSkillsOpen(false);
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("touchstart", handlePointerDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [skillsOpen]);
+
+  useEffect(() => {
     if (!activeSessionId || activeSessionReadOnly) {
       setSkillsOpen(false);
     }
@@ -2887,6 +3135,85 @@ export function ChatShell({
     syncMessagesToBottom,
     visibleDraftKey,
   ]);
+
+  useLayoutEffect(() => {
+    const scroller = messagesScrollerRef.current;
+    if (!scroller || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    let frameId = 0;
+    const observer = new ResizeObserver(() => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        if (!activeSessionHasRenderableContent) {
+          isAutoScrollingToBottomRef.current = false;
+          setShowScrollToBottom(false);
+          return;
+        }
+
+        if (!showScrollToBottomRef.current) {
+          syncMessagesToBottom();
+          return;
+        }
+
+        const nearBottom = isNearMessagesBottom();
+        if (isAutoScrollingToBottomRef.current && !nearBottom) {
+          return;
+        }
+
+        if (nearBottom) {
+          isAutoScrollingToBottomRef.current = false;
+        }
+        shouldStickMessagesToBottomRef.current = loading && nearBottom;
+        setShowScrollToBottom(!nearBottom);
+      });
+    });
+
+    observer.observe(scroller);
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      observer.disconnect();
+    };
+  }, [activeSessionHasRenderableContent, isNearMessagesBottom, loading, syncMessagesToBottom]);
+
+  useEffect(() => {
+    const scroller = messagesScrollerRef.current;
+    const sentinel = messagesBottomSentinelRef.current;
+    if (!scroller || !sentinel || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const nearBottom = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.99);
+        isBottomSentinelVisibleRef.current = nearBottom;
+        if (isAutoScrollingToBottomRef.current && !nearBottom) {
+          return;
+        }
+
+        if (nearBottom) {
+          isAutoScrollingToBottomRef.current = false;
+        }
+        shouldStickMessagesToBottomRef.current = loading && nearBottom;
+        setShowScrollToBottom(activeSessionHasRenderableContent && !nearBottom);
+      },
+      {
+        root: scroller,
+        threshold: [0.99, 1],
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeSessionHasRenderableContent, activeSessionId, loading, visibleDraftKey]);
 
   useLayoutEffect(() => {
     const textarea = composerTextareaRef.current;
@@ -3472,24 +3799,26 @@ export function ChatShell({
   }, [activeSessionId, localeFetch, setSessionRunState]);
 
   const handleMessagesScroll = useCallback(() => {
-    if (isProgrammaticMessagesScrollRef.current || !loading) {
+    if (isProgrammaticMessagesScrollRef.current) {
       return;
     }
 
-    if (!isNearMessagesBottom()) {
-      shouldStickMessagesToBottomRef.current = false;
-      setShowScrollToBottom(true);
+    const nearBottom = isNearMessagesBottom();
+    if (isAutoScrollingToBottomRef.current && !nearBottom) {
       return;
     }
 
-    shouldStickMessagesToBottomRef.current = true;
-    setShowScrollToBottom(false);
+    if (nearBottom) {
+      isAutoScrollingToBottomRef.current = false;
+    }
+    shouldStickMessagesToBottomRef.current = loading && nearBottom;
+    setShowScrollToBottom(!nearBottom);
   }, [isNearMessagesBottom, loading]);
 
   const handleScrollToBottomClick = useCallback(() => {
+    isAutoScrollingToBottomRef.current = true;
     shouldSnapMessagesToBottomRef.current = true;
     shouldStickMessagesToBottomRef.current = loading;
-    setShowScrollToBottom(false);
     syncMessagesToBottom("smooth");
   }, [loading, syncMessagesToBottom]);
 
@@ -3599,7 +3928,10 @@ export function ChatShell({
       : "mx-auto w-full max-w-none rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-1.5 py-1.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2";
 
     return (
-      <div className={shellClassName}>
+      <div
+        ref={isCentered ? undefined : dockedComposerRef}
+        className={shellClassName}
+      >
         <div className={contentClassName}>
           {pendingAttachments.length ? (
             <div className="mb-1.5 flex flex-wrap gap-1">
@@ -3780,7 +4112,7 @@ export function ChatShell({
               placeholder={
                 activeSessionReadOnly
                   ? messages.chat.archivedMessagePlaceholder
-                  : messages.chat.messagePlaceholder
+                  : `${messages.chat.messagePlaceholder} ${messages.chat.composerUsageHint}`
               }
               className={`w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:text-sm sm:leading-6 ${
                 isCentered ? "min-h-[4.5rem] sm:min-h-[5rem]" : "min-h-[3rem] sm:min-h-[3.25rem]"
@@ -3805,9 +4137,9 @@ export function ChatShell({
                   />
                   {uploading ? messages.chat.uploading : messages.chat.attach}
                 </label>
-                <div className="relative">
+                <div ref={skillsPopoverRef} className="relative">
                   {skillsOpen && !isCreateSessionOnly ? (
-                    <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(24rem,33vw)]">
+                    <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(40rem,calc(100vw-4rem))] sm:max-w-[calc(100vw-4rem)]">
                       <div className="relative rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
                         <span
                           aria-hidden="true"
@@ -3870,6 +4202,13 @@ export function ChatShell({
                     {messages.chat.skills}
                   </button>
                 </div>
+                {!isCreateSessionOnly && !activeSessionReadOnly ? (
+                  <ComposerContextUsage
+                    usage={contextUsage}
+                    loading={contextLoading}
+                    messages={messages}
+                  />
+                ) : null}
               </div>
               {isCreateSessionOnly ? (
                 <button
@@ -3909,12 +4248,6 @@ export function ChatShell({
                 </button>
               )}
             </div>
-            {!isCreateSessionOnly && !activeSessionReadOnly ? (
-              <ComposerContextUsage
-                usage={contextUsage}
-                loading={contextLoading}
-              />
-            ) : null}
           </form>
           {!isCreateSessionOnly && error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
         </div>
@@ -4035,21 +4368,29 @@ export function ChatShell({
                 messages={messages}
               />
             ) : null}
+            <div ref={messagesBottomSentinelRef} aria-hidden="true" className="h-px w-full shrink-0" />
           </div>
         </div>
 
-        {showScrollToBottom ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-[7.5rem] z-10 flex justify-center px-3 sm:bottom-[8.75rem]">
-            <button
-              type="button"
-              onClick={handleScrollToBottomClick}
-              className="ui-button-primary pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium shadow-[var(--shadow-float)]"
-            >
-              <span aria-hidden="true" className="text-xs leading-none">↓</span>
-              <span>{loading ? messages.chat.newMessages : messages.chat.backToBottom}</span>
-            </button>
-          </div>
-        ) : null}
+        <div
+          aria-hidden={!showScrollToBottom}
+          style={{ bottom: `${Math.max(16, Math.round(dockedComposerHeight + 16))}px` }}
+          className={`absolute inset-x-0 z-10 flex justify-center px-3 transition-[opacity,transform] duration-200 ${
+            showScrollToBottom ? "pointer-events-none opacity-100 translate-y-0" : "pointer-events-none translate-y-2 opacity-0"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={handleScrollToBottomClick}
+            tabIndex={showScrollToBottom ? 0 : -1}
+            className={`ui-button-primary inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium shadow-[var(--shadow-float)] transition-[opacity,transform] duration-200 ${
+              showScrollToBottom ? "pointer-events-auto" : "pointer-events-none"
+            }`}
+          >
+            <span aria-hidden="true" className="text-xs leading-none">↓</span>
+            <span>{loading ? messages.chat.newMessages : messages.chat.backToBottom}</span>
+          </button>
+        </div>
 
         {!isCenteredEmptyState ? renderComposer({ placement: "docked", mode: "active-session" }) : null}
       </section>

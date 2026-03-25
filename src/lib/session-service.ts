@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ChatRunStatus, MessageRole, Prisma, SessionStatus, User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-export const SESSION_PAGE_SIZE = 30;
+export const SESSION_PAGE_SIZE = 20;
 export const RUN_HISTORY_LIMIT = 20;
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const SESSION_TITLE_MAX_LENGTH = 60;
