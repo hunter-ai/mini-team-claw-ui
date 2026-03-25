@@ -1659,6 +1659,8 @@ export function ChatShell({
   const activeSessionLoaded = activeSessionId ? (loadedSessionIds[activeSessionId] ?? false) : true;
   const activeSessionHasRenderableContent =
     Boolean(pairing) || renderableMessages.length > 0 || Boolean(activeRun);
+  const isCenteredEmptyState =
+    !pairing && !activeRun && sessionMessages.length === 0 && !activeSessionReadOnly;
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
@@ -2697,11 +2699,6 @@ export function ChatShell({
     await loadSession(targetSessionId, false);
   }
 
-  function sendMessage(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void submitActiveMessage();
-  }
-
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
       return;
@@ -2826,6 +2823,270 @@ export function ChatShell({
     }));
   }, [activeSessionId]);
 
+  function renderComposer(options: {
+    placement: "centered" | "docked";
+    mode: "active-session" | "create-session-only";
+  }) {
+    const isCentered = options.placement === "centered";
+    const isCreateSessionOnly = options.mode === "create-session-only";
+    const composerDisabled = isCreateSessionOnly || !activeSessionId || activeSessionReadOnly;
+    const canSubmitActiveMessage =
+      !composerDisabled &&
+      !uploading &&
+      (!loading || activeSessionReadOnly) &&
+      (Boolean(text.trim()) || pendingAttachments.length > 0 || selectedSkills.length > 0);
+
+    const shellClassName = isCentered
+      ? "mx-auto flex w-full max-w-[min(46rem,100%)] flex-col justify-center py-8 sm:py-12"
+      : "shrink-0 border-t border-[color:var(--border-subtle)] bg-[rgba(248,250,252,0.78)] px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2";
+    const contentClassName = isCentered
+      ? "rounded-[1rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-2 py-2 shadow-[var(--shadow-panel)] sm:px-3 sm:py-3"
+      : "mx-auto w-full max-w-none rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-1.5 py-1.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2";
+
+    return (
+      <div className={shellClassName}>
+        <div className={contentClassName}>
+          {pendingAttachments.length ? (
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              {pendingAttachments.map((attachment) => (
+                <AttachmentBadge key={attachment.id} attachment={attachment} messages={messages} tone="composer" />
+              ))}
+            </div>
+          ) : null}
+          {selectedSkills.length ? (
+            <div className="mb-1.5 flex flex-wrap gap-1">
+              {selectedSkills.map((skill) => (
+                <SelectedSkillBadge
+                  key={skill.key}
+                  skill={skill}
+                  messages={messages}
+                  tone="composer"
+                  onRemove={handleRemoveSelectedSkill}
+                />
+              ))}
+            </div>
+          ) : null}
+          {skillsOpen && !isCreateSessionOnly ? (
+            <>
+              <button
+                type="button"
+                aria-label={messages.common.cancel}
+                onClick={() => setSkillsOpen(false)}
+                className="ui-overlay fixed inset-0 z-20 sm:hidden"
+              />
+              <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden">
+                <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
+                    <button
+                      type="button"
+                      onClick={() => setSkillsOpen(false)}
+                      className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
+                    >
+                      {messages.common.cancel}
+                    </button>
+                  </div>
+
+                  {skillsLoading ? (
+                    <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
+                  ) : null}
+
+                  {!skillsLoading && skillsError ? (
+                    <div className="rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
+                      <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
+                      <button
+                        type="button"
+                        onClick={handleRetryLoadSkills}
+                        className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                      >
+                        {messages.chat.retryLoadSkills}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
+                    <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
+                  ) : null}
+
+                  {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
+                    <div className="max-h-[min(18rem,42vh)] space-y-2 overflow-y-auto pr-0.5">
+                      {sortedSkills.map((skill) => (
+                        <SkillListItemCard
+                          key={skill.key}
+                          skill={skill}
+                          messages={messages}
+                          selected={selectedSkills.some((item) => item.key === skill.key)}
+                          onToggle={handleToggleSkillSelection}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          ) : null}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!isCreateSessionOnly) {
+                void submitActiveMessage();
+              }
+            }}
+            className="px-0.5 py-0.5"
+          >
+            {activeSessionReadOnly ? (
+              <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
+                {messages.chat.archivedReadOnlyNotice}
+              </p>
+            ) : null}
+            <textarea
+              ref={composerTextareaRef}
+              value={text}
+              onChange={(event) => {
+                if (!activeSessionId || isCreateSessionOnly) {
+                  return;
+                }
+                const value = event.target.value;
+                setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
+              }}
+              onKeyDown={handleComposerKeyDown}
+              rows={isCentered ? 3 : 2}
+              placeholder={
+                activeSessionReadOnly
+                  ? messages.chat.archivedMessagePlaceholder
+                  : messages.chat.messagePlaceholder
+              }
+              className={`w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:text-sm sm:leading-6 ${
+                isCentered ? "min-h-[4.5rem] sm:min-h-[5rem]" : "min-h-[3rem] sm:min-h-[3.25rem]"
+              } ${isCreateSessionOnly ? "cursor-default opacity-60" : ""}`}
+              disabled={composerDisabled || loading}
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
+              <div className="min-w-0 flex flex-wrap items-center gap-1">
+                <label className="ui-button-secondary inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]">
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    disabled={composerDisabled || uploading || loading}
+                    onChange={(event) => {
+                      void uploadFiles(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                  {uploading ? messages.chat.uploading : messages.chat.attach}
+                </label>
+                <div className="relative">
+                  {skillsOpen && !isCreateSessionOnly ? (
+                    <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(24rem,33vw)]">
+                      <div className="relative rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
+                        <span
+                          aria-hidden="true"
+                          className="absolute bottom-[-0.35rem] left-5 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
+                        />
+                        <div className="relative flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
+                          <button
+                            type="button"
+                            onClick={() => setSkillsOpen(false)}
+                            className="ui-button-secondary rounded-full px-2 py-1 text-[10px]"
+                          >
+                            {messages.common.cancel}
+                          </button>
+                        </div>
+
+                        {skillsLoading ? (
+                          <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
+                        ) : null}
+
+                        {!skillsLoading && skillsError ? (
+                          <div className="mt-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
+                            <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
+                            <button
+                              type="button"
+                              onClick={handleRetryLoadSkills}
+                              className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                            >
+                              {messages.chat.retryLoadSkills}
+                            </button>
+                          </div>
+                        ) : null}
+
+                        {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
+                          <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
+                        ) : null}
+
+                        {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
+                          <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-0.5">
+                            {sortedSkills.map((skill) => (
+                              <SkillListItemCard
+                                key={skill.key}
+                                skill={skill}
+                                messages={messages}
+                                selected={selectedSkills.some((item) => item.key === skill.key)}
+                                onToggle={handleToggleSkillSelection}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleToggleSkills}
+                    disabled={composerDisabled || uploading || loading}
+                    className="ui-button-secondary rounded-full px-2 py-1 text-[10px] disabled:cursor-not-allowed sm:px-2.5 sm:text-[11px]"
+                  >
+                    {messages.chat.skills}
+                  </button>
+                </div>
+              </div>
+              {isCreateSessionOnly ? (
+                <button
+                  type="button"
+                  onClick={handleCreateSessionClick}
+                  className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold sm:px-3 sm:py-1.5 sm:text-[11px]"
+                >
+                  {messages.nav.newSession}
+                </button>
+              ) : activeSessionReadOnly ? (
+                <button
+                  type="button"
+                  disabled
+                  className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                >
+                  {messages.chat.readOnly}
+                </button>
+              ) : loading ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void abortSession();
+                  }}
+                  className="ui-button-danger inline-flex size-8 shrink-0 items-center justify-center rounded-full sm:size-9"
+                  aria-label={messages.chat.abort}
+                  title={messages.chat.abort}
+                >
+                  <StopSquareIcon />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!canSubmitActiveMessage}
+                  className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                >
+                  {messages.chat.send}
+                </button>
+              )}
+            </div>
+          </form>
+          {!isCreateSessionOnly && error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative grid h-full min-h-0 gap-1.5 lg:grid-cols-[auto_minmax(0,1fr)]">
       {drawerOpen ? (
@@ -2911,15 +3172,12 @@ export function ChatShell({
               </div>
             ) : null}
 
-            {sessionMessages.length === 0 && !activeRun ? (
-              <div className="flex min-h-full flex-1 items-center justify-center py-4">
-                <button
-                  type="button"
-                  onClick={createSession}
-                  className="ui-button-secondary rounded-full px-4 py-2 text-xs"
-                >
-                  {messages.nav.newSession}
-                </button>
+            {isCenteredEmptyState ? (
+              <div className="flex min-h-full flex-1 items-center">
+                {renderComposer({
+                  placement: "centered",
+                  mode: activeSessionId ? "active-session" : "create-session-only",
+                })}
               </div>
             ) : null}
 
@@ -2958,234 +3216,7 @@ export function ChatShell({
           </div>
         ) : null}
 
-        <div className="shrink-0 border-t border-[color:var(--border-subtle)] bg-[rgba(248,250,252,0.78)] px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2">
-          <div className="mx-auto w-full max-w-none">
-            <div className="rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-1.5 py-1.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2">
-              {pendingAttachments.length ? (
-                <div className="mb-1.5 flex flex-wrap gap-1">
-                  {pendingAttachments.map((attachment) => (
-                    <AttachmentBadge key={attachment.id} attachment={attachment} messages={messages} tone="composer" />
-                  ))}
-                </div>
-              ) : null}
-              {selectedSkills.length ? (
-                <div className="mb-1.5 flex flex-wrap gap-1">
-                  {selectedSkills.map((skill) => (
-                    <SelectedSkillBadge
-                      key={skill.key}
-                      skill={skill}
-                      messages={messages}
-                      tone="composer"
-                      onRemove={handleRemoveSelectedSkill}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {skillsOpen ? (
-                <>
-                  <button
-                    type="button"
-                    aria-label={messages.common.cancel}
-                    onClick={() => setSkillsOpen(false)}
-                    className="ui-overlay fixed inset-0 z-20 sm:hidden"
-                  />
-                  <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden">
-                    <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
-                        <button
-                          type="button"
-                          onClick={() => setSkillsOpen(false)}
-                          className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
-                        >
-                          {messages.common.cancel}
-                        </button>
-                      </div>
-
-                      {skillsLoading ? (
-                        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
-                      ) : null}
-
-                      {!skillsLoading && skillsError ? (
-                        <div className="rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
-                          <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
-                          <button
-                            type="button"
-                            onClick={handleRetryLoadSkills}
-                            className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
-                          >
-                            {messages.chat.retryLoadSkills}
-                          </button>
-                        </div>
-                      ) : null}
-
-                      {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
-                        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
-                      ) : null}
-
-                      {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
-                        <div className="max-h-[min(18rem,42vh)] space-y-2 overflow-y-auto pr-0.5">
-                          {sortedSkills.map((skill) => (
-                            <SkillListItemCard
-                              key={skill.key}
-                              skill={skill}
-                              messages={messages}
-                              selected={selectedSkills.some((item) => item.key === skill.key)}
-                              onToggle={handleToggleSkillSelection}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </>
-              ) : null}
-              <form onSubmit={sendMessage} className="px-0.5 py-0.5">
-                {activeSessionReadOnly ? (
-                  <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
-                    {messages.chat.archivedReadOnlyNotice}
-                  </p>
-                ) : null}
-                <textarea
-                  ref={composerTextareaRef}
-                  value={text}
-                  onChange={(event) => {
-                    if (!activeSessionId) {
-                      return;
-                    }
-                    const value = event.target.value;
-                    setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
-                  }}
-                  onKeyDown={handleComposerKeyDown}
-                  rows={2}
-                  placeholder={
-                    activeSessionReadOnly
-                      ? messages.chat.archivedMessagePlaceholder
-                      : messages.chat.messagePlaceholder
-                  }
-                  className="min-h-[3rem] w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:min-h-[3.25rem] sm:text-sm sm:leading-6"
-                  disabled={!activeSessionId || loading || activeSessionReadOnly}
-                />
-                <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
-                  <div className="min-w-0 flex flex-wrap items-center gap-1">
-                    <label className="ui-button-secondary inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]">
-                      <input
-                        type="file"
-                        className="hidden"
-                        multiple
-                        disabled={!activeSessionId || uploading || loading || activeSessionReadOnly}
-                        onChange={(event) => {
-                          void uploadFiles(event.target.files);
-                          event.target.value = "";
-                        }}
-                      />
-                      {uploading ? messages.chat.uploading : messages.chat.attach}
-                    </label>
-                    <div className="relative">
-                      {skillsOpen ? (
-                        <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(24rem,33vw)]">
-                          <div className="relative rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
-                            <span
-                              aria-hidden="true"
-                              className="absolute bottom-[-0.35rem] left-5 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
-                            />
-                            <div className="relative flex items-center justify-between gap-2">
-                              <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
-                              <button
-                                type="button"
-                                onClick={() => setSkillsOpen(false)}
-                                className="ui-button-secondary rounded-full px-2 py-1 text-[10px]"
-                              >
-                                {messages.common.cancel}
-                              </button>
-                            </div>
-
-                            {skillsLoading ? (
-                              <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.skillsLoading}</p>
-                            ) : null}
-
-                            {!skillsLoading && skillsError ? (
-                              <div className="mt-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2">
-                                <p className="text-[11px] leading-5 text-red-600">{skillsError}</p>
-                                <button
-                                  type="button"
-                                  onClick={handleRetryLoadSkills}
-                                  className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
-                                >
-                                  {messages.chat.retryLoadSkills}
-                                </button>
-                              </div>
-                            ) : null}
-
-                            {!skillsLoading && !skillsError && sortedSkills.length === 0 ? (
-                              <p className="mt-2 text-[11px] text-[color:var(--text-secondary)]">{messages.chat.noSkills}</p>
-                            ) : null}
-
-                            {!skillsLoading && !skillsError && sortedSkills.length > 0 ? (
-                              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-0.5">
-                                {sortedSkills.map((skill) => (
-                                  <SkillListItemCard
-                                    key={skill.key}
-                                    skill={skill}
-                                    messages={messages}
-                                    selected={selectedSkills.some((item) => item.key === skill.key)}
-                                    onToggle={handleToggleSkillSelection}
-                                  />
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={handleToggleSkills}
-                        disabled={!activeSessionId || uploading || loading || activeSessionReadOnly}
-                        className="ui-button-secondary rounded-full px-2 py-1 text-[10px] disabled:cursor-not-allowed sm:px-2.5 sm:text-[11px]"
-                      >
-                        {messages.chat.skills}
-                      </button>
-                    </div>
-                  </div>
-                  {activeSessionReadOnly ? (
-                    <button
-                      type="button"
-                      disabled
-                      className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
-                    >
-                      {messages.chat.readOnly}
-                    </button>
-                  ) : loading ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void abortSession();
-                      }}
-                      className="ui-button-danger inline-flex size-8 shrink-0 items-center justify-center rounded-full sm:size-9"
-                      aria-label={messages.chat.abort}
-                      title={messages.chat.abort}
-                    >
-                      <StopSquareIcon />
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={
-                        !activeSessionId ||
-                        uploading ||
-                        (!text.trim() && pendingAttachments.length === 0 && selectedSkills.length === 0)
-                      }
-                      className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
-                    >
-                      {messages.chat.send}
-                    </button>
-                  )}
-                </div>
-              </form>
-              {error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
-            </div>
-          </div>
-        </div>
+        {!isCenteredEmptyState ? renderComposer({ placement: "docked", mode: "active-session" }) : null}
       </section>
 
       {renameTargetSession ? (
