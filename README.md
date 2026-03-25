@@ -115,6 +115,21 @@ The provided container startup command runs:
 - `npm run db:seed`
 - `npm run start`
 
+## Usage Notes
+
+### Session Archiving
+
+- MiniTeamClawUI automatically archives sessions after 7 days since the last message.
+- You should configure OpenClaw to use the same 7-day auto-archive rule, so the UI and gateway follow the same session lifecycle.
+- As of now, OpenClaw does not support keeping sessions indefinitely for long-term retention.
+- Because of that limitation, this project should be used with the expectation that old sessions will be archived rather than preserved forever.
+
+Example prompt for your Lobster:
+
+```text
+Please update my OpenClaw configuration so chat sessions are automatically archived after 7 days of inactivity by setting `session.reset.mode = "idle"` and `idleMinutes = 10080`. First verify the exact config file path used by my current OpenClaw setup, then apply the change, and finally show me exactly what you changed.
+```
+
 ## Environment Variables
 
 The project validates environment variables in `src/lib/env.ts`.

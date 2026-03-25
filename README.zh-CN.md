@@ -115,6 +115,21 @@ docker compose up --build
 - `npm run db:seed`
 - `npm run start`
 
+## 使用提示
+
+### 会话归档说明
+
+- MiniTeamClawUI 会在最后一条消息后的 7 天自动归档会话。
+- 你需要同时在 OpenClaw 里配置相同的 7 天自动归档规则，这样 UI 和 gateway 的会话生命周期才一致。
+- 截止目前，OpenClaw 还不支持把会话长期保留。
+- 因此，使用这个项目时需要默认接受一个前提：旧会话会进入归档状态，而不是被永久保留。
+
+给你的龙虾使用的示例提示词：
+
+```text
+请帮我修改当前 OpenClaw 的配置，把聊天会话设置为在 7 天无活动后自动归档，具体设置为 `session.reset.mode = "idle"`，`idleMinutes = 10080`。先确认我当前 OpenClaw 实际使用的配置文件位置，再执行修改，最后把你改了什么明确告诉我。
+```
+
 ## 环境变量
 
 项目会在 `src/lib/env.ts` 中校验环境变量。
