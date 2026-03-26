@@ -2866,7 +2866,11 @@ export function ChatShell({
       }
 
       updateActiveRun(sessionId, null);
-      void loadSessionRef.current(sessionId, false);
+      void loadSessionRef.current(sessionId, false).finally(() => {
+        if (payload.type !== "pairing_required") {
+          void refreshSessionContext(sessionId);
+        }
+      });
     };
 
     source.onerror = () => {
@@ -2917,6 +2921,7 @@ export function ChatShell({
     locale,
     messages.chat.connectionLost,
     patchRunHistory,
+    refreshSessionContext,
     scheduleBufferedRunPatchFlush,
     setSessionRunState,
     updateActiveRun,
