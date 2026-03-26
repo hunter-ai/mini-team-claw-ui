@@ -258,6 +258,27 @@ a {
   padding: 0;
 }
 
+.markdown-body .code-block-shell__pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 1rem 1rem;
+  white-space: pre;
+  tab-size: 2;
+  font-family: var(--font-mono);
+}
+
+.markdown-body .code-block-shell__pre code {
+  display: block;
+  min-width: max-content;
+  white-space: pre;
+  tab-size: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .markdown-body blockquote {
   border-left: 3px solid rgba(15, 23, 42, 0.18);
   padding-left: 1rem;

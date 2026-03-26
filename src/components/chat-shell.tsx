@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ComponentPropsWithoutRef, ReactNode, RefObject } from "react";
 import { memo } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
@@ -859,7 +859,7 @@ function AssistantTextBlock({
 
   return (
     <div className="whitespace-normal">
-      <MessageBody content={content} isUser={false} assistantRenderMode={renderMode} />
+      <MessageBody content={content} isUser={false} assistantRenderMode={renderMode} messages={messages} />
       {streaming ? <StreamingSpinner messages={messages} /> : null}
     </div>
   );
@@ -1213,14 +1213,261 @@ function SlashCommandHint({
   );
 }
 
+function CopyIcon({ className = "size-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className={className}>
+      <rect x="5.25" y="3.25" width="7.5" height="9.5" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M3.75 10.75h-.5A1.5 1.5 0 0 1 1.75 9.25v-6A1.5 1.5 0 0 1 3.25 1.75h4A1.5 1.5 0 0 1 8.75 3.25v.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = "size-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className={className}>
+      <path
+        d="m3.5 8.25 2.6 2.6 6.4-6.35"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function getNodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getNodeText).join("");
+  }
+
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return getNodeText(node.props.children ?? "");
+  }
+
+  return "";
+}
+
+function extractCodeBlockData(children: ReactNode) {
+  const childArray = Array.isArray(children) ? children : [children];
+  const codeChild = childArray.find((child) => isValidElement<ComponentPropsWithoutRef<"code">>(child));
+
+  if (!codeChild || !isValidElement<ComponentPropsWithoutRef<"code">>(codeChild)) {
+    return null;
+  }
+
+  const className = codeChild.props.className ?? "";
+  const languageMatch = className.match(/language-([^\s]+)/);
+
+  return {
+    code: getNodeText(codeChild.props.children ?? "").replace(/\n$/, ""),
+    language: languageMatch?.[1] ?? "",
+  };
+}
+
+const COPY_ICON_CLASS_NAME = "size-4.5";
+const COPY_ICON_BUTTON_CLASS_NAME = "justify-center rounded-full p-1.5 hover:bg-[rgba(107,114,128,0.16)]";
+
+async function copyText(text: string) {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.clipboard?.writeText === "function" &&
+    typeof window !== "undefined" &&
+    window.isSecureContext
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is unavailable");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+
+  const selection = document.getSelection();
+  const originalRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+
+  if (selection) {
+    selection.removeAllRanges();
+    if (originalRange) {
+      selection.addRange(originalRange);
+    }
+  }
+
+  if (!copied) {
+    throw new Error("Copy command failed");
+  }
+}
+
+function CopyButton({
+  text,
+  successLabel,
+  ariaLabel,
+  className = "",
+  iconClassName,
+  iconButtonClassName = "",
+}: {
+  text: string;
+  successLabel: string;
+  ariaLabel: string;
+  className?: string;
+  iconClassName?: string;
+  iconButtonClassName?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!text) {
+      return;
+    }
+
+    try {
+      await copyText(text);
+      setCopied(true);
+
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = window.setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, 1800);
+    } catch {
+      setCopied(false);
+    }
+  }, [text]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label={copied ? successLabel : ariaLabel}
+      disabled={!text}
+      className={`inline-flex items-center gap-1 border-0 bg-transparent p-0 text-[10px] font-medium transition-colors ${
+        copied
+          ? "text-[#155e75]"
+          : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]"
+      } ${iconButtonClassName} ${!text ? "cursor-default opacity-60" : ""} ${className}`}
+    >
+      {copied ? (
+        <span aria-hidden="true" className="shrink-0">
+          <CheckIcon className={iconClassName} />
+        </span>
+      ) : (
+        <span aria-hidden="true" className="shrink-0">
+          <CopyIcon className={iconClassName} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function MessageCopyButton({
+  content,
+  messages,
+  className = "",
+}: {
+  content: string;
+  messages: Dictionary;
+  className?: string;
+}) {
+  if (!content.trim()) {
+    return null;
+  }
+
+  return (
+    <CopyButton
+      text={content}
+      successLabel={messages.chat.copied}
+      ariaLabel={messages.chat.copyMessage}
+      className={className}
+      iconClassName={COPY_ICON_CLASS_NAME}
+      iconButtonClassName={COPY_ICON_BUTTON_CLASS_NAME}
+    />
+  );
+}
+
+function CodeBlock({
+  children,
+  messages,
+  ...props
+}: ComponentPropsWithoutRef<"pre"> & { messages: Dictionary }) {
+  const data = extractCodeBlockData(children);
+
+  if (!data) {
+    return <pre {...props}>{children}</pre>;
+  }
+
+  return (
+    <div className="code-block-shell my-3 overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[#f8fafc]">
+      <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-0">
+        <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+          {data.language || "\u00a0"}
+        </span>
+        <CopyButton
+          text={data.code}
+          successLabel={messages.chat.copied}
+          ariaLabel={messages.chat.copyCode}
+          iconClassName={COPY_ICON_CLASS_NAME}
+          iconButtonClassName={COPY_ICON_BUTTON_CLASS_NAME}
+          className="shrink-0"
+        />
+      </div>
+      <pre
+        {...props}
+        className="code-block-shell__pre overflow-x-auto"
+      >
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 function MessageBody({
   content,
   isUser,
   assistantRenderMode = "markdown",
+  messages,
 }: {
   content: string;
   isUser: boolean;
   assistantRenderMode?: ClientAssistantRenderMode;
+  messages: Dictionary;
 }) {
   if (!content.trim()) {
     return null;
@@ -1240,7 +1487,18 @@ function MessageBody({
 
   return (
     <div className="markdown-body text-sm leading-7">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          pre: ({ children, ...props }) => (
+            <CodeBlock {...props} messages={messages}>
+              {children}
+            </CodeBlock>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -1583,59 +1841,64 @@ const ChatMessageItem = memo(function ChatMessageItem({
   );
 
   return (
-    <div
-      className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
-        isUser
-          ? "ml-auto w-fit max-w-[min(100%,44rem)] border-[rgba(17,24,39,0.18)] bg-[#d1d5db] text-[color:var(--text-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
-          : "mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
-      }`}
-    >
-      <div>
-        {isUser ? (
-          <MessageBody content={content} isUser />
-        ) : (
-          <div className="space-y-3">
-            {assistantBlocks.map((block) => {
-              if (block.kind === "markdown_text") {
-                return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming ? true : false} />;
-              }
+    <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+      <div
+        className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
+          isUser
+            ? "ml-auto w-fit max-w-[min(100%,44rem)] border-[rgba(17,24,39,0.18)] bg-[#d1d5db] text-[color:var(--text-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+            : "mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
+        }`}
+      >
+        <div>
+          {isUser ? (
+            <MessageBody content={content} isUser messages={messages} />
+          ) : (
+            <div className="space-y-3">
+              {assistantBlocks.map((block) => {
+                if (block.kind === "markdown_text") {
+                  return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming ? true : false} />;
+                }
 
-              if (block.kind === "tool_step") {
-                return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
-              }
+                if (block.kind === "tool_step") {
+                  return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
+                }
 
-              return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
-            })}
-          </div>
-        )}
-        {skills.length || attachments.length ? (
-          <div
-            className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
-              isUser ? "border-[rgba(17,24,39,0.12)]" : "border-[color:var(--border-subtle)]"
-            }`}
-          >
-            {skills.map((skill) => (
-              <SelectedSkillBadge
-                key={skill.key}
-                skill={skill}
-                messages={messages}
-                tone={isUser ? "user-message" : "composer"}
-              />
-            ))}
-            {attachments.map((attachment) => (
-              <AttachmentBadge
-                key={attachment.id}
-                attachment={attachment}
-                messages={messages}
-                tone={isUser ? "user-message" : "assistant-message"}
-              />
-            ))}
-          </div>
-        ) : null}
+                return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
+              })}
+            </div>
+          )}
+          {skills.length || attachments.length ? (
+            <div
+              className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${
+                isUser ? "border-[rgba(17,24,39,0.12)]" : "border-[color:var(--border-subtle)]"
+              }`}
+            >
+              {skills.map((skill) => (
+                <SelectedSkillBadge
+                  key={skill.key}
+                  skill={skill}
+                  messages={messages}
+                  tone={isUser ? "user-message" : "composer"}
+                />
+              ))}
+              {attachments.map((attachment) => (
+                <AttachmentBadge
+                  key={attachment.id}
+                  attachment={attachment}
+                  messages={messages}
+                  tone={isUser ? "user-message" : "assistant-message"}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <p className={`mt-1 text-[10px] ${isUser ? "text-[color:var(--text-tertiary)]" : "text-[color:var(--text-quaternary)]"}`}>
+          {formatRelativeDate(createdAt, locale, messages.common.noActivityYet)}
+        </p>
       </div>
-      <p className={`mt-1 text-[10px] ${isUser ? "text-[color:var(--text-tertiary)]" : "text-[color:var(--text-quaternary)]"}`}>
-        {formatRelativeDate(createdAt, locale, messages.common.noActivityYet)}
-      </p>
+      <div className={`mt-1 flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+        <MessageCopyButton content={content} messages={messages} />
+      </div>
     </div>
   );
 });
@@ -1652,28 +1915,35 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
   messages: Dictionary;
 }) {
   return (
-    <div className="mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
-      <div>
-        <div className="space-y-3">
-          {activeRunBlocks.map((block) => {
-            if (block.kind === "markdown_text") {
-              return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming} />;
-            }
+    <div className="flex flex-col items-start">
+      <div className="mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
+        <div>
+          <div className="space-y-3">
+            {activeRunBlocks.map((block) => {
+              if (block.kind === "markdown_text") {
+                return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming} />;
+              }
 
-            if (block.kind === "tool_step") {
-              return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
-            }
+              if (block.kind === "tool_step") {
+                return <AssistantToolCard key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
+              }
 
-            return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
-          })}
-          {activeRunBlocks.length === 0 ? (
-            <div className="flex items-center text-sm text-[color:var(--text-tertiary)]">
-              <StreamingSpinner messages={messages} />
-            </div>
-          ) : null}
+              return <AssistantLifecycleNote key={block.key} entry={block.entry} messages={messages} streaming={block.streaming} />;
+            })}
+            {activeRunBlocks.length === 0 ? (
+              <div className="flex items-center text-sm text-[color:var(--text-tertiary)]">
+                <StreamingSpinner messages={messages} />
+              </div>
+            ) : null}
+          </div>
         </div>
+        <p className="mt-1 text-[10px] text-[color:var(--text-quaternary)]">
+          {formatRelativeDate(activeRun.updatedAt, locale, messages.common.noActivityYet)}
+        </p>
       </div>
-      <p className="mt-1 text-[10px] text-[color:var(--text-quaternary)]">{formatRelativeDate(activeRun.updatedAt, locale, messages.common.noActivityYet)}</p>
+      <div className="mt-1 flex w-full justify-start">
+        <MessageCopyButton content={activeRun.draftAssistantContent} messages={messages} />
+      </div>
     </div>
   );
 });
