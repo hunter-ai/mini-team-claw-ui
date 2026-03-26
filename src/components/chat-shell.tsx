@@ -2557,7 +2557,8 @@ export function ChatShell({
         }
 
         if (payload.status === "pairing_required" && payload.pairing) {
-          setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
+          const pairingState = payload.pairing;
+          setPairingBySession((current) => ({ ...current, [sessionId]: pairingState }));
           setContextUsageBySession((current) => ({
             ...current,
             [sessionId]: {
