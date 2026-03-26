@@ -122,6 +122,8 @@ type SessionsPageInfo = {
   nextCursor: string | null;
 };
 
+type ComposerMode = "active-session" | "bootstrap" | "create-session-only";
+
 type RunState = "idle" | "starting" | "streaming" | "reconnecting" | "failed" | "aborted" | "completed";
 type StreamPayload = ClientChatRunEvent | { type: "ping"; runId: string; seq: null };
 type BufferedRunPatch = {
@@ -132,7 +134,7 @@ type BufferedRunPatch = {
 };
 
 type SessionContextUsageState = {
-  status: "ok" | "unavailable";
+  status: "idle" | "ok" | "unavailable" | "pairing_required";
   usage: SessionContextUsage | null;
 };
 
@@ -2069,6 +2071,9 @@ export function ChatShell({
   );
   const [contentSegmentsByRunId, setContentSegmentsByRunId] = useState<Record<string, RunContentSegmentation>>({});
   const [composerBySession, setComposerBySession] = useState<Record<string, string>>({});
+  const [bootstrapComposerText, setBootstrapComposerText] = useState("");
+  const [bootstrapPending, setBootstrapPending] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [pendingAttachmentsBySession, setPendingAttachmentsBySession] = useState<Record<string, Attachment[]>>({});
   const [selectedSkillsBySession, setSelectedSkillsBySession] = useState<Record<string, SelectedSkill[]>>({});
   const [runStateBySession, setRunStateBySession] = useState<Record<string, RunState>>(
@@ -2131,6 +2136,8 @@ export function ChatShell({
   const activeRunBySessionRef = useRef<Record<string, SessionRun | null>>(
     initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
   );
+  const bootstrapComposerTextRef = useRef("");
+  const bootstrapPromiseRef = useRef<Promise<string | null> | null>(null);
   const pendingComposerSelectionRef = useRef<ComposerSelection | null>(null);
   const loadSessionRef = useRef<(sessionId: string, clearError?: boolean) => Promise<void>>(async () => {});
   const skillsPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -2151,7 +2158,7 @@ export function ChatShell({
     () => (activeSessionId ? runHistoryBySession[activeSessionId] ?? [] : []),
     [activeSessionId, runHistoryBySession],
   );
-  const text = activeSessionId ? composerBySession[activeSessionId] ?? "" : "";
+  const text = activeSessionId ? composerBySession[activeSessionId] ?? "" : bootstrapComposerText;
   const pendingAttachments = activeSessionId ? pendingAttachmentsBySession[activeSessionId] ?? [] : [];
   const selectedSkills = activeSessionId ? selectedSkillsBySession[activeSessionId] ?? [] : [];
   const activeRun = activeSessionId ? activeRunBySession[activeSessionId] ?? null : null;
@@ -2201,9 +2208,11 @@ export function ChatShell({
     ) ?? null;
   }, [activeSlashMatch]);
   const showSlashSuggestions =
+    Boolean(activeSessionId) &&
     Boolean(activeSlashMatch?.isCursorInCommandToken) &&
     activeSlashMatch?.dismissKey !== dismissedSlashPanelKey;
   const showSlashHint =
+    Boolean(activeSessionId) &&
     Boolean(activeSlashCommand) &&
     Boolean(activeSlashMatch) &&
     !activeSlashMatch?.isCursorInCommandToken &&
@@ -2314,6 +2323,11 @@ export function ChatShell({
     !activeRun &&
     sessionMessages.length === 0 &&
     !activeSessionReadOnly;
+  const composerMode: ComposerMode = activeSessionId
+    ? "active-session"
+    : sessions.length === 0
+      ? "bootstrap"
+      : "create-session-only";
 
   const syncMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const scroller = messagesScrollerRef.current;
@@ -2465,6 +2479,29 @@ export function ChatShell({
     window.history.replaceState(window.history.state, "", nextUrl);
   }, [pathname]);
 
+  const initializeSessionState = useCallback((session: Session, options?: { composerText?: string }) => {
+    updateSessionSummary(session);
+    setActiveSessionId(session.id);
+    setMessagesBySession((current) => ({ ...current, [session.id]: current[session.id] ?? [] }));
+    setRunHistoryBySession((current) => ({ ...current, [session.id]: current[session.id] ?? [] }));
+    setLoadedSessionIds((current) => ({ ...current, [session.id]: true }));
+    updateActiveRun(session.id, null);
+    setSessionRunState(session.id, "idle");
+    setPendingAttachmentsBySession((current) => ({ ...current, [session.id]: current[session.id] ?? [] }));
+    setSelectedSkillsBySession((current) => ({ ...current, [session.id]: current[session.id] ?? [] }));
+    setComposerBySession((current) => ({
+      ...current,
+      [session.id]: options?.composerText ?? current[session.id] ?? "",
+    }));
+    setPairingBySession((current) => ({ ...current, [session.id]: null }));
+    setErrorBySession((current) => ({ ...current, [session.id]: null }));
+    setShowScrollToBottom(false);
+    shouldSnapMessagesToBottomRef.current = true;
+    shouldStickMessagesToBottomRef.current = false;
+    setDrawerOpen(false);
+    syncSessionUrl(session.id);
+  }, [setSessionRunState, syncSessionUrl, updateActiveRun, updateSessionSummary]);
+
   const replaceRunHistory = useCallback((sessionId: string, runs: ClientRunHistoryItem[]) => {
     setRunHistoryBySession((current) => ({
       ...current,
@@ -2495,8 +2532,9 @@ export function ChatShell({
         });
 
         const payload = (await response.json().catch(() => ({}))) as {
-          status?: "ok" | "busy" | "unavailable";
+          status?: "ok" | "busy" | "unavailable" | "pairing_required";
           usage?: SessionContextUsage;
+          pairing?: PairingState;
         };
 
         if (contextRequestVersionBySessionRef.current[sessionId] !== requestVersion) {
@@ -2508,7 +2546,7 @@ export function ChatShell({
             ...current,
             [sessionId]: {
               status: "unavailable",
-              usage: current[sessionId]?.usage ?? null,
+              usage: null,
             },
           }));
           return;
@@ -2518,7 +2556,20 @@ export function ChatShell({
           return;
         }
 
+        if (payload.status === "pairing_required" && payload.pairing) {
+          setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
+          setContextUsageBySession((current) => ({
+            ...current,
+            [sessionId]: {
+              status: "pairing_required",
+              usage: null,
+            },
+          }));
+          return;
+        }
+
         if (payload.status === "ok" && payload.usage) {
+          setPairingBySession((current) => ({ ...current, [sessionId]: null }));
           const nextUsage = payload.usage;
           setContextUsageBySession((current) => ({
             ...current,
@@ -2785,6 +2836,13 @@ export function ChatShell({
       } else if (payload.type === "pairing_required") {
         setSessionRunState(sessionId, "failed");
         setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
+        setContextUsageBySession((current) => ({
+          ...current,
+          [sessionId]: {
+            status: "pairing_required",
+            usage: null,
+          },
+        }));
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.pairing.message }));
       } else {
         setSessionRunState(sessionId, "failed");
@@ -2917,7 +2975,8 @@ export function ChatShell({
 
     if (!nextActiveRun) {
       setPairingBySession((current) => ({ ...current, [sessionId]: null }));
-      if (payload.session.status !== "ARCHIVED") {
+      const contextState = contextUsageBySession[sessionId];
+      if (payload.session.status !== "ARCHIVED" && (!contextState || contextState.status === "idle")) {
         void refreshSessionContext(sessionId);
       }
       return;
@@ -2926,11 +2985,15 @@ export function ChatShell({
     lastEventSeqByRunRef.current[nextActiveRun.id] = nextActiveRun.lastEventSeq;
 
     subscribeToRun(sessionId, nextActiveRun);
-  }, [localeFetch, messages.chat.failedToLoadSession, refreshSessionContext, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
+  }, [contextUsageBySession, localeFetch, messages.chat.failedToLoadSession, refreshSessionContext, replaceRunHistory, setSessionRunState, subscribeToRun, updateActiveRun, updateSessionSummary]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    bootstrapComposerTextRef.current = bootstrapComposerText;
+  }, [bootstrapComposerText]);
 
   useEffect(() => {
     loadSessionRef.current = loadSession;
@@ -2972,6 +3035,46 @@ export function ChatShell({
       setSkillsLoading(false);
     }
   }, [localeFetch, messages.chat.skillsUnavailable, skillsFetched, skillsLoading]);
+
+  const ensureInitialSession = useCallback(async () => {
+    if (activeSessionIdRef.current) {
+      return activeSessionIdRef.current;
+    }
+
+    if (bootstrapPromiseRef.current) {
+      return bootstrapPromiseRef.current;
+    }
+
+    setBootstrapPending(true);
+    setBootstrapError(null);
+
+    const request = (async () => {
+      const response = await localeFetch("/api/sessions", { method: "POST" }).catch((fetchError) => fetchError);
+
+      if (response instanceof Error) {
+        setBootstrapError(response.message);
+        return null;
+      }
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        setBootstrapError(payload.error ?? messages.chat.failedToCreateSession);
+        return null;
+      }
+
+      const payload = (await response.json()) as { session: Session };
+      const composerText = bootstrapComposerTextRef.current;
+      initializeSessionState(payload.session, { composerText });
+      setBootstrapError(null);
+      return payload.session.id;
+    })().finally(() => {
+      bootstrapPromiseRef.current = null;
+      setBootstrapPending(false);
+    });
+
+    bootstrapPromiseRef.current = request;
+    return request;
+  }, [initializeSessionState, localeFetch, messages.chat.failedToCreateSession]);
 
   useEffect(() => {
     if (!skillsOpen) {
@@ -3025,6 +3128,14 @@ export function ChatShell({
       window.removeEventListener("touchstart", handlePointerDown);
     };
   }, [skillsOpen]);
+
+  useEffect(() => {
+    if (activeSessionId || sessions.length > 0 || bootstrapError || bootstrapPromiseRef.current) {
+      return;
+    }
+
+    void ensureInitialSession();
+  }, [activeSessionId, bootstrapError, ensureInitialSession, sessions.length]);
 
   useEffect(() => {
     if (!activeSessionId || activeSessionReadOnly) {
@@ -3271,8 +3382,14 @@ export function ChatShell({
       return;
     }
 
+    const contextState = contextUsageBySession[initialActiveSessionId];
+    if (contextState && contextState.status !== "idle") {
+      return;
+    }
+
     void refreshSessionContext(initialActiveSessionId);
   }, [
+    contextUsageBySession,
     initialActiveRun,
     initialActiveSessionId,
     refreshSessionContext,
@@ -3288,7 +3405,8 @@ export function ChatShell({
       return;
     }
 
-    if (contextUsageBySession[activeSessionId]?.usage) {
+    const contextState = contextUsageBySession[activeSessionId];
+    if (contextState && contextState.status !== "idle") {
       return;
     }
 
@@ -3395,12 +3513,18 @@ export function ChatShell({
     }
 
     const selectedSession = sessions.find((candidate) => candidate.id === sessionId);
-    if (selectedSession?.status !== "ARCHIVED") {
+    const contextState = contextUsageBySession[sessionId];
+    if (selectedSession?.status !== "ARCHIVED" && (!contextState || contextState.status === "idle")) {
       void refreshSessionContext(sessionId);
     }
-  }, [activeSessionId, flushBufferedRunPatch, loadedSessionIds, loadSession, refreshSessionContext, sessions, subscribeToRun, syncSessionUrl]);
+  }, [activeSessionId, contextUsageBySession, flushBufferedRunPatch, loadedSessionIds, loadSession, refreshSessionContext, sessions, subscribeToRun, syncSessionUrl]);
 
   const createSession = useCallback(async () => {
+    if (!activeSessionId && sessions.length === 0) {
+      await ensureInitialSession();
+      return;
+    }
+
     logChatShellDebug("[chat-debug][chat-shell] creating session", {
       currentActiveSessionId: activeSessionId,
     });
@@ -3422,23 +3546,8 @@ export function ChatShell({
       previousActiveSessionId: activeSessionId,
       newSessionId: payload.session.id,
     });
-    updateSessionSummary(payload.session);
-    setActiveSessionId(payload.session.id);
-    setMessagesBySession((current) => ({ ...current, [payload.session.id]: [] }));
-    setRunHistoryBySession((current) => ({ ...current, [payload.session.id]: [] }));
-    setLoadedSessionIds((current) => ({ ...current, [payload.session.id]: true }));
-    updateActiveRun(payload.session.id, null);
-    setSessionRunState(payload.session.id, "idle");
-    setPendingAttachmentsBySession((current) => ({ ...current, [payload.session.id]: [] }));
-    setSelectedSkillsBySession((current) => ({ ...current, [payload.session.id]: [] }));
-    setComposerBySession((current) => ({ ...current, [payload.session.id]: "" }));
-    setPairingBySession((current) => ({ ...current, [payload.session.id]: null }));
-    setShowScrollToBottom(false);
-    shouldSnapMessagesToBottomRef.current = true;
-    shouldStickMessagesToBottomRef.current = false;
-    setDrawerOpen(false);
-    syncSessionUrl(payload.session.id);
-  }, [activeSessionId, localeFetch, messages.chat.failedToCreateSession, syncSessionUrl, updateActiveRun, updateSessionSummary, setDrawerOpen, setSessionRunState]);
+    initializeSessionState(payload.session);
+  }, [activeSessionId, ensureInitialSession, initializeSessionState, localeFetch, messages.chat.failedToCreateSession, sessions.length]);
 
   const openRenameModal = useCallback((session: Session) => {
     if (isSidebarCollapsed || session.status === "ARCHIVED") {
@@ -3555,14 +3664,21 @@ export function ChatShell({
   }
 
   async function submitActiveMessage() {
-    if (!activeSessionId || loading || activeSessionReadOnly) {
+    const bootstrapText = bootstrapComposerTextRef.current;
+    let targetSessionId = activeSessionId;
+
+    if (!targetSessionId) {
+      targetSessionId = await ensureInitialSession();
+    }
+
+    if (!targetSessionId || loading || activeSessionReadOnly) {
       return;
     }
 
-    const currentText = composerBySession[activeSessionId] ?? "";
+    const currentText = activeSessionId ? composerBySession[activeSessionId] ?? "" : bootstrapText;
     const trimmedText = currentText.trim();
-    const selectedAttachments = pendingAttachmentsBySession[activeSessionId] ?? [];
-    const selectedSkillSnapshots = selectedSkillsBySession[activeSessionId] ?? [];
+    const selectedAttachments = pendingAttachmentsBySession[targetSessionId] ?? [];
+    const selectedSkillSnapshots = selectedSkillsBySession[targetSessionId] ?? [];
 
     if (!trimmedText && selectedAttachments.length === 0 && selectedSkillSnapshots.length === 0) {
       return;
@@ -3572,7 +3688,6 @@ export function ChatShell({
     const attachmentIds = selectedAttachments.map((attachment) => attachment.id);
     const skillKeys = selectedSkillSnapshots.map((skill) => skill.key);
     const clientRequestId = uuidv4();
-    const targetSessionId = activeSessionId;
     const optimisticRun: SessionRun = {
       id: `pending:${clientRequestId}`,
       status: "STARTING",
@@ -3710,12 +3825,20 @@ export function ChatShell({
   }
 
   function updateComposerText(nextText: string, selection: ComposerSelection) {
-    if (!activeSessionId) {
+    if (!activeSessionId && composerMode !== "bootstrap") {
       return;
     }
 
     pendingComposerSelectionRef.current = selection;
-    setComposerBySession((current) => ({ ...current, [activeSessionId]: nextText }));
+    if (activeSessionId) {
+      setComposerBySession((current) => ({ ...current, [activeSessionId]: nextText }));
+      return;
+    }
+
+    setBootstrapComposerText(nextText);
+    if (bootstrapError) {
+      setBootstrapError(null);
+    }
   }
 
   function handleSelectSlashSuggestion(item: SlashSuggestionItem) {
@@ -3909,12 +4032,14 @@ export function ChatShell({
 
   function renderComposer(options: {
     placement: "centered" | "docked";
-    mode: "active-session" | "create-session-only";
+    mode: ComposerMode;
   }) {
     const isCentered = options.placement === "centered";
     const isCreateSessionOnly = options.mode === "create-session-only";
-    const composerDisabled = isCreateSessionOnly || !activeSessionId || activeSessionReadOnly;
+    const isBootstrap = options.mode === "bootstrap";
+    const composerDisabled = isCreateSessionOnly || activeSessionReadOnly;
     const canSubmitActiveMessage =
+      !isCreateSessionOnly &&
       !composerDisabled &&
       !uploading &&
       (!loading || activeSessionReadOnly) &&
@@ -4091,11 +4216,18 @@ export function ChatShell({
               ref={composerTextareaRef}
               value={text}
               onChange={(event) => {
-                if (!activeSessionId || isCreateSessionOnly) {
+                if (isCreateSessionOnly) {
                   return;
                 }
                 const value = event.target.value;
-                setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
+                if (activeSessionId) {
+                  setComposerBySession((current) => ({ ...current, [activeSessionId]: value }));
+                } else if (isBootstrap) {
+                  setBootstrapComposerText(value);
+                  if (bootstrapError) {
+                    setBootstrapError(null);
+                  }
+                }
                 syncComposerSelectionFromElement(event.target);
               }}
               onSelect={(event) => {
@@ -4129,7 +4261,7 @@ export function ChatShell({
                     type="file"
                     className="hidden"
                     multiple
-                    disabled={composerDisabled || uploading || loading}
+                    disabled={composerDisabled || isBootstrap || uploading || loading}
                     onChange={(event) => {
                       void uploadFiles(event.target.files);
                       event.target.value = "";
@@ -4196,13 +4328,13 @@ export function ChatShell({
                   <button
                     type="button"
                     onClick={handleToggleSkills}
-                    disabled={composerDisabled || uploading || loading}
+                    disabled={composerDisabled || isBootstrap || uploading || loading}
                     className="ui-button-secondary rounded-full px-2 py-1 text-[10px] disabled:cursor-not-allowed sm:px-2.5 sm:text-[11px]"
                   >
                     {messages.chat.skills}
                   </button>
                 </div>
-                {!isCreateSessionOnly && !activeSessionReadOnly ? (
+                {!isCreateSessionOnly && !isBootstrap && !activeSessionReadOnly ? (
                   <ComposerContextUsage
                     usage={contextUsage}
                     loading={contextLoading}
@@ -4217,6 +4349,14 @@ export function ChatShell({
                   className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold sm:px-3 sm:py-1.5 sm:text-[11px]"
                 >
                   {messages.nav.newSession}
+                </button>
+              ) : isBootstrap && !text.trim() ? (
+                <button
+                  type="button"
+                  disabled
+                  className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                >
+                  {bootstrapPending ? messages.common.loading : messages.nav.newSession}
                 </button>
               ) : activeSessionReadOnly ? (
                 <button
@@ -4249,7 +4389,9 @@ export function ChatShell({
               )}
             </div>
           </form>
-          {!isCreateSessionOnly && error ? <p className="mt-1.5 text-[11px] text-red-600">{error}</p> : null}
+          {!isCreateSessionOnly && (error || bootstrapError) ? (
+            <p className="mt-1.5 text-[11px] text-red-600">{error ?? bootstrapError}</p>
+          ) : null}
         </div>
       </div>
     );
@@ -4323,20 +4465,6 @@ export function ChatShell({
                 <p className="mt-1.5 text-xs text-[color:var(--text-secondary)]">
                   {messages.chat.pairingDescription}
                 </p>
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeSessionId) {
-                        setPairingBySession((current) => ({ ...current, [activeSessionId]: null }));
-                        void loadSession(activeSessionId);
-                      }
-                    }}
-                    className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium"
-                  >
-                    {messages.chat.retryConnection}
-                  </button>
-                </div>
               </div>
             ) : null}
 
@@ -4344,7 +4472,7 @@ export function ChatShell({
               <div className="flex min-h-full flex-1 items-center">
                 {renderComposer({
                   placement: "centered",
-                  mode: activeSessionId ? "active-session" : "create-session-only",
+                  mode: composerMode,
                 })}
               </div>
             ) : null}

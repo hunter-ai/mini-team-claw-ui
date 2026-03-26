@@ -5,10 +5,34 @@ import { getActiveChatRunForSession } from "@/lib/chat-run-service";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { sendToOpenClaw } from "@/lib/openclaw/chat";
+import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import { prisma } from "@/lib/prisma";
 import { parseSessionContextUsage } from "@/lib/session-context-usage";
 
 export const runtime = "nodejs";
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readDateIso(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return null;
+}
 
 export async function POST(
   request: Request,
@@ -64,6 +88,21 @@ export async function POST(
       usage,
     });
   } catch (error) {
+    if (error instanceof OpenClawGatewayError && error.detailCode === "PAIRING_REQUIRED") {
+      const details = isObject(error.details) ? error.details : null;
+
+      return NextResponse.json({
+        status: "pairing_required",
+        pairing: {
+          status: "pairing_required",
+          message: error.message,
+          deviceId: readString(details?.deviceId) ?? null,
+          lastPairedAt: readDateIso(details?.lastPairedAt) ?? null,
+          pendingRequests: error.pairingRequest ? [error.pairingRequest] : [],
+        },
+      });
+    }
+
     console.error("[api/context] failed to fetch session context usage", {
       sessionId: session.id,
       userId: user.id,
