@@ -4,9 +4,11 @@ import { getCurrentUser } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
+import { redirectToSetupIfNeeded } from "@/lib/setup";
 import { redirect } from "next/navigation";
 
 export async function LoginPage({ locale }: { locale: Locale }) {
+  await redirectToSetupIfNeeded(locale);
   const user = await getCurrentUser();
   if (user) {
     redirect(localizeHref(locale, "/chat"));

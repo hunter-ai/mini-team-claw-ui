@@ -1,0 +1,24 @@
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { SystemSetupPanel } from "@/components/system-setup-panel";
+import { getCurrentUser } from "@/lib/auth";
+import type { Locale } from "@/lib/i18n/config";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { redirectAwayFromSetupWhenComplete, getSetupStatus } from "@/lib/setup";
+
+export async function SetupPage({ locale }: { locale: Locale }) {
+  await redirectAwayFromSetupWhenComplete(locale);
+  const [messages, status, user] = await Promise.all([
+    getDictionary(locale),
+    getSetupStatus(),
+    getCurrentUser(),
+  ]);
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6">
+      <header className="mb-6 flex items-center justify-end">
+        <LanguageSwitcher locale={locale} messages={messages} />
+      </header>
+      <SystemSetupPanel locale={locale} messages={messages} initialStatus={status} mode={user ? "admin" : "setup"} />
+    </main>
+  );
+}

@@ -3,20 +3,21 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verify } from "@node-rs/argon2";
 import { type User, UserRole } from "@prisma/client";
-import { getEnv } from "@/lib/env";
+import { getStartupEnv } from "@/lib/env";
 import type { Locale } from "@/lib/i18n/config";
 import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
+import { getRuntimeAppUrl } from "@/lib/runtime-config";
 
 const COOKIE_NAME = "mtc_session";
 const SESSION_DAYS = 14;
 
 function hashToken(token: string) {
-  return createHmac("sha256", getEnv().SESSION_SECRET).update(token).digest("hex");
+  return createHmac("sha256", getStartupEnv().SESSION_SECRET).update(token).digest("hex");
 }
 
-function shouldUseSecureCookies() {
-  const appUrl = getEnv().APP_URL;
+async function shouldUseSecureCookies() {
+  const appUrl = await getRuntimeAppUrl();
 
   if (!appUrl) {
     return process.env.NODE_ENV === "production";
@@ -46,7 +47,7 @@ export async function createSession(userId: string) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: shouldUseSecureCookies(),
+    secure: await shouldUseSecureCookies(),
     path: "/",
     expires: expiresAt,
   });
@@ -96,7 +97,7 @@ export async function clearSession() {
   cookieStore.set(COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: shouldUseSecureCookies(),
+    secure: await shouldUseSecureCookies(),
     path: "/",
     maxAge: 0,
   });

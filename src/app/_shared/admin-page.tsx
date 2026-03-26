@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminUserManager } from "@/components/admin-user-manager";
+import { SystemSetupPanel } from "@/components/system-setup-panel";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { LogoutButton } from "@/components/logout-button";
 import { requireAdminInLocale } from "@/lib/auth";
@@ -7,20 +8,25 @@ import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
+import { getSetupStatus, redirectToSetupIfNeeded } from "@/lib/setup";
 
 export async function AdminPage({ locale }: { locale: Locale }) {
+  await redirectToSetupIfNeeded(locale);
   await requireAdminInLocale(locale);
-  const messages = await getDictionary(locale);
-  const users = await prisma.user.findMany({
-    orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      username: true,
-      role: true,
-      openclawAgentId: true,
-      isActive: true,
-    },
-  });
+  const [messages, users, setupStatus] = await Promise.all([
+    getDictionary(locale),
+    prisma.user.findMany({
+      orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        openclawAgentId: true,
+        isActive: true,
+      },
+    }),
+    getSetupStatus(),
+  ]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-4 py-6 sm:px-6">
@@ -43,6 +49,15 @@ export async function AdminPage({ locale }: { locale: Locale }) {
         </div>
       </header>
       <AdminUserManager locale={locale} messages={messages} initialUsers={users} />
+      <section className="mt-6">
+        <header className="mb-4 px-1">
+          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">
+            {messages.admin.systemTitle}
+          </p>
+          <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.admin.systemDescription}</p>
+        </header>
+        <SystemSetupPanel locale={locale} messages={messages} initialStatus={setupStatus} mode="admin" />
+      </section>
     </main>
   );
 }

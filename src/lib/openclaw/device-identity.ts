@@ -8,7 +8,7 @@ import {
   sign,
 } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { getEnv } from "@/lib/env";
+import { getStartupEnv } from "@/lib/env";
 
 const IDENTITY_ROW_ID = "default";
 const ENCRYPTION_CONTEXT = "openclaw-gateway-identity";
@@ -62,7 +62,7 @@ function base64UrlDecode(value: string) {
 
 function encryptionKey() {
   return createHash("sha256")
-    .update(`${ENCRYPTION_CONTEXT}:${getEnv().SESSION_SECRET}`)
+    .update(`${ENCRYPTION_CONTEXT}:${getStartupEnv().SESSION_SECRET}`)
     .digest();
 }
 

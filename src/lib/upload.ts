@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getEnv } from "@/lib/env";
+import { getStartupEnv } from "@/lib/env";
 
 const allowedMimeTypes = new Set([
   "application/pdf",
@@ -27,7 +27,7 @@ export function ensureMimeAllowed(mime: string) {
 }
 
 export async function persistUpload(userId: string, sessionId: string, file: File) {
-  const env = getEnv();
+  const env = getStartupEnv();
   if (!ensureMimeAllowed(file.type)) {
     throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
   }

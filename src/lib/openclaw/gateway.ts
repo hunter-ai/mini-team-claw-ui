@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
-import { getEnv } from "@/lib/env";
 import {
   buildGatewayDeviceIdentity,
   persistGatewayPairingState,
   persistGatewayDeviceToken,
   resolveGatewayAuthToken,
 } from "@/lib/openclaw/device-identity";
+import { getGatewayRuntimeConfigOrThrow } from "@/lib/runtime-config";
 
 type ReqFrame = {
   type: "req";
@@ -726,12 +726,12 @@ export class OpenClawGatewayClient {
       return;
     }
 
-    const env = getEnv();
-    const token = env.OPENCLAW_GATEWAY_TOKEN ?? "";
+    const runtimeConfig = await getGatewayRuntimeConfigOrThrow();
+    const token = runtimeConfig.gatewayToken ?? "";
     const profile = mode === "pairing-admin" ? buildPairingAdminProfile(token) : buildConnectProfile(token);
 
     try {
-      this.ws = new WebSocket(env.OPENCLAW_GATEWAY_URL, profile.socketOptions);
+      this.ws = new WebSocket(runtimeConfig.gatewayUrl, profile.socketOptions);
       this.attachSocketListeners();
       await new Promise<void>((resolve, reject) => {
         this.ws?.once("open", () => resolve());
@@ -782,7 +782,7 @@ export class OpenClawGatewayClient {
           code: response.error?.code ?? null,
           detailCode,
           message: response.error?.message ?? "OpenClaw connect failed",
-          gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+          gatewayUrl: runtimeConfig.gatewayUrl,
           hasToken: Boolean(token),
           client: profile.connectParams.client,
           scopes: profile.connectParams.scopes,
@@ -828,7 +828,7 @@ export class OpenClawGatewayClient {
       }
     } catch (error) {
       console.error("[openclaw] connect failed", {
-        gatewayUrl: env.OPENCLAW_GATEWAY_URL,
+        gatewayUrl: runtimeConfig.gatewayUrl,
         hasToken: Boolean(token),
         error: summarizeError(error),
       });

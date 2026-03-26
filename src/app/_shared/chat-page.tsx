@@ -10,6 +10,7 @@ import {
   listChatSessions,
   SESSION_PAGE_SIZE,
 } from "@/lib/session-service";
+import { redirectToSetupIfNeeded } from "@/lib/setup";
 
 export async function ChatPage({
   locale,
@@ -18,6 +19,7 @@ export async function ChatPage({
   locale: Locale;
   searchParams: Promise<{ session?: string | string[] }>;
 }) {
+  await redirectToSetupIfNeeded(locale);
   const user = await requireUserInLocale(locale);
   const messages = await getDictionary(locale);
   const query = await searchParams;
