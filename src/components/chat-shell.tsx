@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ComponentPropsWithoutRef, ReactNode, RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import { memo } from "react";
 import { UserRole } from "@prisma/client";
 import ReactMarkdown from "react-markdown";
@@ -24,6 +24,7 @@ import { localizeHref } from "@/lib/i18n/routing";
 import { LogoutButton } from "@/components/logout-button";
 import type { SessionContextUsage } from "@/lib/session-context-usage";
 import { OPENCLAW_SLASH_COMMANDS, type SlashCommandDefinition } from "@/lib/slash-commands";
+import { CodeBlock } from "@/components/code-block";
 
 type Attachment = {
   id: string;
@@ -859,7 +860,7 @@ function AssistantTextBlock({
 
   return (
     <div className="whitespace-normal">
-      <MessageBody content={content} isUser={false} assistantRenderMode={renderMode} messages={messages} />
+      <MessageBody content={content} isUser={false} assistantRenderMode={renderMode} messages={messages} streaming={streaming} />
       {streaming ? <StreamingSpinner messages={messages} /> : null}
     </div>
   );
@@ -1241,39 +1242,6 @@ function CheckIcon({ className = "size-3.5" }: { className?: string }) {
   );
 }
 
-function getNodeText(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") {
-    return String(node);
-  }
-
-  if (Array.isArray(node)) {
-    return node.map(getNodeText).join("");
-  }
-
-  if (isValidElement<{ children?: ReactNode }>(node)) {
-    return getNodeText(node.props.children ?? "");
-  }
-
-  return "";
-}
-
-function extractCodeBlockData(children: ReactNode) {
-  const childArray = Array.isArray(children) ? children : [children];
-  const codeChild = childArray.find((child) => isValidElement<ComponentPropsWithoutRef<"code">>(child));
-
-  if (!codeChild || !isValidElement<ComponentPropsWithoutRef<"code">>(codeChild)) {
-    return null;
-  }
-
-  const className = codeChild.props.className ?? "";
-  const languageMatch = className.match(/language-([^\s]+)/);
-
-  return {
-    code: getNodeText(codeChild.props.children ?? "").replace(/\n$/, ""),
-    language: languageMatch?.[1] ?? "",
-  };
-}
-
 const COPY_ICON_CLASS_NAME = "size-4.5";
 const COPY_ICON_BUTTON_CLASS_NAME = "justify-center rounded-full p-1.5 hover:bg-[rgba(107,114,128,0.16)]";
 
@@ -1422,52 +1390,18 @@ function MessageCopyButton({
   );
 }
 
-function CodeBlock({
-  children,
-  messages,
-  ...props
-}: ComponentPropsWithoutRef<"pre"> & { messages: Dictionary }) {
-  const data = extractCodeBlockData(children);
-
-  if (!data) {
-    return <pre {...props}>{children}</pre>;
-  }
-
-  return (
-    <div className="code-block-shell my-3 overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[#f8fafc]">
-      <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-0">
-        <span className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
-          {data.language || "\u00a0"}
-        </span>
-        <CopyButton
-          text={data.code}
-          successLabel={messages.chat.copied}
-          ariaLabel={messages.chat.copyCode}
-          iconClassName={COPY_ICON_CLASS_NAME}
-          iconButtonClassName={COPY_ICON_BUTTON_CLASS_NAME}
-          className="shrink-0"
-        />
-      </div>
-      <pre
-        {...props}
-        className="code-block-shell__pre overflow-x-auto"
-      >
-        {children}
-      </pre>
-    </div>
-  );
-}
-
 function MessageBody({
   content,
   isUser,
   assistantRenderMode = "markdown",
   messages,
+  streaming = false,
 }: {
   content: string;
   isUser: boolean;
   assistantRenderMode?: ClientAssistantRenderMode;
   messages: Dictionary;
+  streaming?: boolean;
 }) {
   if (!content.trim()) {
     return null;
@@ -1491,7 +1425,7 @@ function MessageBody({
         remarkPlugins={[remarkGfm]}
         components={{
           pre: ({ children, ...props }) => (
-            <CodeBlock {...props} messages={messages}>
+            <CodeBlock {...props} messages={messages} streaming={streaming}>
               {children}
             </CodeBlock>
           ),
