@@ -1,6 +1,6 @@
 services:
   web:
-    image: ihunterdev/miniteamclawui:0.0.1
+    image: ihunterdev/miniteamclawui:0.0.3-admin-bootstrap
     pull_policy: always
     init: true
     env_file:

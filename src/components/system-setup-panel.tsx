@@ -159,14 +159,18 @@ export function SystemSetupPanel({
       }
 
       setAdminForm({ username: "", password: "", openclawAgentId: "main" });
-      await refreshStatus();
+      const refreshed = await refreshStatus();
       setAdminMessage(messages.setup.firstAdminCreated);
+      if (refreshed.isComplete && mode === "setup") {
+        window.location.href = loginHref;
+      }
     } finally {
       setCreatingAdmin(false);
     }
   }
 
   const loginHref = localizeHref(locale, "/login");
+  const usesSeedBootstrap = status.adminBootstrapMode === "seed";
 
   return (
     <div className="space-y-5">
@@ -182,7 +186,11 @@ export function SystemSetupPanel({
             {messages.setup.description}
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-[color:var(--text-secondary)] sm:flex-row sm:flex-wrap sm:gap-3">
-            {[messages.setup.stepConnect, messages.setup.stepVerify, messages.setup.stepAdmin].map((step, index) => (
+            {[
+              messages.setup.stepConnect,
+              messages.setup.stepVerify,
+              ...(usesSeedBootstrap ? [] : [messages.setup.stepAdmin]),
+            ].map((step, index) => (
               <div key={step} className="flex items-center gap-2 rounded-full bg-[color:var(--surface-subtle)] px-3 py-2">
                 <span className="inline-flex size-5 items-center justify-center rounded-full bg-[color:var(--surface-contrast)] text-[10px] font-semibold text-[color:var(--text-inverse)]">
                   {index + 1}
@@ -370,7 +378,18 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
         </p>
         <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.setup.adminDescription}</p>
 
-        {status.hasActiveAdmin ? (
+        {usesSeedBootstrap ? (
+          <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
+            <p className="text-sm text-[color:var(--text-secondary)]">
+              {status.hasActiveAdmin ? messages.setup.firstAdminExists : messages.setup.firstAdminMissing}
+            </p>
+            {mode === "setup" && status.isComplete ? (
+              <Link href={loginHref} className="ui-button-primary mt-4 inline-flex rounded-full px-4 py-2 text-sm font-semibold">
+                {messages.setup.goToLogin}
+              </Link>
+            ) : null}
+          </div>
+        ) : status.hasActiveAdmin ? (
           <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm text-[color:var(--text-secondary)]">{messages.setup.firstAdminExists}</p>
             {mode === "setup" && status.isComplete ? (

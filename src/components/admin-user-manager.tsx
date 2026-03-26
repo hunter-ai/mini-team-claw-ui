@@ -11,6 +11,10 @@ type AdminUser = {
   role: "ADMIN" | "MEMBER";
   openclawAgentId: string;
   isActive: boolean;
+  oidcBinding: {
+    issuer: string;
+    linkedAt: string;
+  } | null;
 };
 
 export function AdminUserManager({
@@ -165,6 +169,13 @@ export function AdminUserManager({
                   <p className="font-medium text-[color:var(--text-primary)]">{user.username}</p>
                   <p className="text-sm text-[color:var(--text-tertiary)]">
                     {user.openclawAgentId} · {user.role === "ADMIN" ? messages.admin.admin : messages.admin.member} · {user.isActive ? messages.admin.active : messages.admin.disabled}
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--text-quaternary)]">
+                    {user.oidcBinding ? messages.admin.ssoBound : messages.admin.ssoNotBound}
+                    {user.oidcBinding ? ` · ${messages.admin.linkedIdentity}: ${user.oidcBinding.issuer}` : ""}
+                    {user.oidcBinding
+                      ? ` · ${messages.admin.linkedAt}: ${new Date(user.oidcBinding.linkedAt).toLocaleString(locale)}`
+                      : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

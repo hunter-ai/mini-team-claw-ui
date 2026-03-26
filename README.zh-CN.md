@@ -117,9 +117,11 @@ docker compose up --build
 - `npm run db:seed`
 - `npm run start`
 
+本地开发建议保持 `ADMIN_BOOTSTRAP_MODE=seed`，这样 `npm run db:seed` 会根据 `SEED_ADMIN_*` 自动创建默认管理员。
+
 ### 生产镜像部署
 
-仓库现在额外提供了面向生产部署的 [`docker-compose.prod.yml`](./docker-compose.prod.yml)，它会直接拉取预构建镜像 `ihunterdev/miniteamclawui:0.0.1`。
+仓库现在额外提供了面向生产部署的 [`docker-compose.prod.yml`](./docker-compose.prod.yml)，它会直接拉取预构建镜像 `ihunterdev/miniteamclawui:0.0.2-oidc-no-email`。
 
 推荐的启动流程：
 
@@ -131,7 +133,8 @@ docker compose -f docker-compose.prod.yml up -d
 
 说明：
 
-- 首次启动前请先修改 `.env.prod`，尤其是 `SESSION_SECRET`、`OPENCLAW_GATEWAY_URL`、`OPENCLAW_GATEWAY_TOKEN` 和种子管理员密码。
+- 首次启动前请先修改 `.env.prod`，尤其是 `SESSION_SECRET`、`OPENCLAW_GATEWAY_URL` 和 `OPENCLAW_GATEWAY_TOKEN`。
+- 生产模板默认使用 `ADMIN_BOOTSTRAP_MODE=ui`。完成 gateway 检查后，请在 setup 页面创建首个管理员。
 - 该 compose 文件默认把应用绑定到 `127.0.0.1:3000`。
 - PostgreSQL 数据会持久化到名为 `postgres_data` 的 Docker volume。
 - 镜像配置了 `pull_policy: always`，启动时会检查是否有更新版本可拉取。
@@ -165,6 +168,7 @@ docker compose -f docker-compose.prod.yml up -d
 | --- | --- | --- |
 | `DATABASE_URL` | 是 | Prisma 使用的 PostgreSQL 连接串。 |
 | `SESSION_SECRET` | 是 | Session 签名密钥，长度至少 32 个字符。 |
+| `ADMIN_BOOTSTRAP_MODE` | 否 | 管理员初始化模式。开发建议使用 `seed`，生产首次安装建议使用 `ui`。默认值：`seed`。 |
 | `OPENCLAW_GATEWAY_URL` | 是 | OpenClaw gateway 的 WebSocket 地址。 |
 | `OPENCLAW_GATEWAY_TOKEN` | 否 | 如果你的 OpenClaw 部署要求 token，可在这里配置。 |
 | `OPENCLAW_UPLOAD_DIR_CONTAINER` | 否 | 本应用视角下的上传目录，默认 `/shared/uploads`。 |
@@ -172,9 +176,13 @@ docker compose -f docker-compose.prod.yml up -d
 | `MAX_UPLOAD_BYTES` | 否 | 单个附件大小上限，默认 `1073741824`（1 GiB）。 |
 | `OPENCLAW_VERBOSE_LEVEL` | 否 | Gateway 日志详细程度，可选值：`off`、`full`。 |
 | `APP_URL` | 否 | 在需要绝对地址时使用的应用外部访问地址。 |
-| `SEED_ADMIN_USERNAME` | 仅 seed 使用 | `npm run db:seed` 时初始管理员用户名。 |
-| `SEED_ADMIN_PASSWORD` | 仅 seed 使用 | `npm run db:seed` 时初始管理员密码。 |
-| `SEED_ADMIN_AGENT_ID` | 仅 seed 使用 | 初始管理员的 `openclawAgentId`，默认 `main`。 |
+| `OIDC_ISSUER` | 否 | OIDC issuer 地址。需与 `OIDC_CLIENT_ID`、`OIDC_CLIENT_SECRET`、`APP_URL` 一起配置后启用 SSO。 |
+| `OIDC_CLIENT_ID` | 否 | SSO 登录使用的 OIDC client ID。 |
+| `OIDC_CLIENT_SECRET` | 否 | SSO 登录使用的 OIDC client secret。 |
+| `OIDC_SCOPES` | 否 | 以空格分隔的 OIDC scope。默认值：`openid profile`。 |
+| `SEED_ADMIN_USERNAME` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，`npm run db:seed` 使用的初始管理员用户名。 |
+| `SEED_ADMIN_PASSWORD` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，`npm run db:seed` 使用的初始管理员密码。 |
+| `SEED_ADMIN_AGENT_ID` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，初始管理员的 `openclawAgentId`，默认 `main`。 |
 
 ## 环境模板
 

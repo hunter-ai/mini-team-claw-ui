@@ -1,8 +1,14 @@
 import { z } from "zod";
 
+function emptyToUndefined(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 const startupEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(32),
+  ADMIN_BOOTSTRAP_MODE: z.enum(["seed", "ui"]).default("seed"),
   OPENCLAW_UPLOAD_DIR_CONTAINER: z.string().default("/shared/uploads"),
   OPENCLAW_UPLOAD_DIR_HOST: z.string().default("/srv/miniteamclaw/uploads"),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
@@ -10,6 +16,10 @@ const startupEnvSchema = z.object({
   OPENCLAW_GATEWAY_URL: z.string().url().optional(),
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
   APP_URL: z.string().url().optional(),
+  OIDC_ISSUER: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  OIDC_SCOPES: z.string().optional(),
 });
 
 let cachedStartupEnv: z.infer<typeof startupEnvSchema> | null = null;
@@ -19,13 +29,18 @@ export function getStartupEnv() {
     cachedStartupEnv = startupEnvSchema.parse({
       DATABASE_URL: process.env.DATABASE_URL,
       SESSION_SECRET: process.env.SESSION_SECRET,
+      ADMIN_BOOTSTRAP_MODE: emptyToUndefined(process.env.ADMIN_BOOTSTRAP_MODE),
       OPENCLAW_UPLOAD_DIR_CONTAINER: process.env.OPENCLAW_UPLOAD_DIR_CONTAINER,
       OPENCLAW_UPLOAD_DIR_HOST: process.env.OPENCLAW_UPLOAD_DIR_HOST,
       MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
       OPENCLAW_VERBOSE_LEVEL: process.env.OPENCLAW_VERBOSE_LEVEL,
-      OPENCLAW_GATEWAY_URL: process.env.OPENCLAW_GATEWAY_URL,
-      OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
-      APP_URL: process.env.APP_URL,
+      OPENCLAW_GATEWAY_URL: emptyToUndefined(process.env.OPENCLAW_GATEWAY_URL),
+      OPENCLAW_GATEWAY_TOKEN: emptyToUndefined(process.env.OPENCLAW_GATEWAY_TOKEN),
+      APP_URL: emptyToUndefined(process.env.APP_URL),
+      OIDC_ISSUER: emptyToUndefined(process.env.OIDC_ISSUER),
+      OIDC_CLIENT_ID: emptyToUndefined(process.env.OIDC_CLIENT_ID),
+      OIDC_CLIENT_SECRET: emptyToUndefined(process.env.OIDC_CLIENT_SECRET),
+      OIDC_SCOPES: emptyToUndefined(process.env.OIDC_SCOPES),
     });
   }
 
@@ -38,6 +53,7 @@ export function getStartupEnvDiagnostics() {
   return {
     databaseConfigured: Boolean(env.DATABASE_URL),
     sessionSecretConfigured: Boolean(env.SESSION_SECRET),
+    adminBootstrapMode: env.ADMIN_BOOTSTRAP_MODE,
     uploadDirContainer: env.OPENCLAW_UPLOAD_DIR_CONTAINER,
     uploadDirHost: env.OPENCLAW_UPLOAD_DIR_HOST,
     maxUploadBytes: env.MAX_UPLOAD_BYTES,
@@ -45,5 +61,8 @@ export function getStartupEnvDiagnostics() {
     fallbackGatewayUrlConfigured: Boolean(env.OPENCLAW_GATEWAY_URL),
     fallbackGatewayTokenConfigured: Boolean(env.OPENCLAW_GATEWAY_TOKEN),
     fallbackAppUrlConfigured: Boolean(env.APP_URL),
+    oidcIssuerConfigured: Boolean(env.OIDC_ISSUER),
+    oidcClientIdConfigured: Boolean(env.OIDC_CLIENT_ID),
+    oidcClientSecretConfigured: Boolean(env.OIDC_CLIENT_SECRET),
   };
 }

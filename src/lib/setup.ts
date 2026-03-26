@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { UserRole } from "@prisma/client";
-import { getStartupEnvDiagnostics } from "@/lib/env";
+import { getStartupEnv, getStartupEnvDiagnostics } from "@/lib/env";
 import { getCurrentUser } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
 import { localizeHref } from "@/lib/i18n/routing";
@@ -35,6 +35,7 @@ export type SetupPairingState = {
 
 export type SetupStatus = {
   isComplete: boolean;
+  adminBootstrapMode: "seed" | "ui";
   hasActiveAdmin: boolean;
   hasRuntimeConfig: boolean;
   configSource: SetupConfigSource;
@@ -49,6 +50,7 @@ export type SetupStatus = {
 };
 
 export async function getSetupStatus(): Promise<SetupStatus> {
+  const env = getStartupEnv();
   const [activeAdminCount, runtimeConfig, gatewayIdentity] = await Promise.all([
     prisma.user.count({
       where: {
@@ -111,6 +113,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
 
   return {
     isComplete: activeAdminCount > 0 && hasRuntimeConfig && gatewayStatus === "healthy",
+    adminBootstrapMode: env.ADMIN_BOOTSTRAP_MODE,
     hasActiveAdmin: activeAdminCount > 0,
     hasRuntimeConfig,
     configSource: (runtimeConfig?.source ?? "missing") as SetupConfigSource,

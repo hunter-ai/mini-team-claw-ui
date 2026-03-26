@@ -14,6 +14,31 @@ const createSchema = z.object({
   role: z.enum([UserRole.ADMIN, UserRole.MEMBER]).default(UserRole.MEMBER),
 });
 
+function serializeAdminUser(user: {
+  id: string;
+  username: string;
+  role: UserRole;
+  openclawAgentId: string;
+  isActive: boolean;
+  identities: Array<{ issuer: string; createdAt: Date }>;
+}) {
+  const identity = user.identities[0] ?? null;
+
+  return {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    openclawAgentId: user.openclawAgentId,
+    isActive: user.isActive,
+    oidcBinding: identity
+      ? {
+          issuer: identity.issuer,
+          linkedAt: identity.createdAt.toISOString(),
+        }
+      : null,
+  };
+}
+
 export async function GET(request: Request) {
   const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
@@ -28,10 +53,19 @@ export async function GET(request: Request) {
       role: true,
       openclawAgentId: true,
       isActive: true,
+      identities: {
+        where: { provider: "oidc" },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: {
+          issuer: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
-  return NextResponse.json({ users });
+  return NextResponse.json({ users: users.map(serializeAdminUser) });
 }
 
 export async function POST(request: Request) {

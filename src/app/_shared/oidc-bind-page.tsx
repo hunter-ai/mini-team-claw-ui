@@ -1,21 +1,15 @@
-import { LoginForm } from "@/components/login-form";
+import { redirect } from "next/navigation";
+import { OidcBindForm } from "@/components/oidc-bind-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getCurrentUser } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
-import { getDictionary, type Dictionary } from "@/lib/i18n/dictionary";
+import { getDictionary } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
-import { isOidcEnabled } from "@/lib/oidc";
+import { getPendingOidcBinding } from "@/lib/oidc";
 import { redirectToSetupIfNeeded } from "@/lib/setup";
-import { redirect } from "next/navigation";
 
-function resolveLoginErrorMessage(error: string | null | undefined, messages: Dictionary) {
+function resolveBindErrorMessage(error: string | null | undefined, messages: Awaited<ReturnType<typeof getDictionary>>) {
   switch (error) {
-    case "oidc_unavailable":
-      return messages.login.oidcUnavailable;
-    case "oidc_failed":
-      return messages.login.oidcFailed;
-    case "oidc_user_disabled":
-      return messages.login.oidcUserDisabled;
     case "oidc_bind_expired":
       return messages.login.bindExpired;
     default:
@@ -23,7 +17,7 @@ function resolveLoginErrorMessage(error: string | null | undefined, messages: Di
   }
 }
 
-export async function LoginPage({
+export async function OidcBindPage({
   locale,
   searchParams,
 }: {
@@ -36,12 +30,19 @@ export async function LoginPage({
     redirect(localizeHref(locale, "/chat"));
   }
 
-  const messages = await getDictionary(locale);
-  const query = searchParams ? await searchParams : {};
+  const [messages, pending, query] = await Promise.all([
+    getDictionary(locale),
+    getPendingOidcBinding(),
+    (searchParams ?? Promise.resolve({})) as Promise<{ error?: string | string[] }>,
+  ]);
+
+  if (!pending) {
+    redirect(localizeHref(locale, "/login?error=oidc_bind_expired"));
+  }
+
   const queryError =
     typeof query.error === "string" ? query.error : Array.isArray(query.error) ? query.error[0] : undefined;
-  const loginError = resolveLoginErrorMessage(queryError, messages);
-  const oidcEnabled = isOidcEnabled();
+  const bindError = resolveBindErrorMessage(queryError, messages);
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
@@ -52,22 +53,24 @@ export async function LoginPage({
           <LanguageSwitcher locale={locale} messages={messages} />
         </div>
         <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[color:var(--text-primary)]">
-          {messages.login.title}
+          {messages.login.bindTitle}
         </h1>
         <p className="mt-4 text-sm leading-7 text-[color:var(--text-secondary)]">
-          {messages.login.description}
+          {messages.login.bindDescription}
         </p>
+        <div className="mt-4 rounded-2xl bg-[color:var(--surface-secondary)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+          <p>{messages.login.bindIssuerLabel}: {pending.issuer}</p>
+          {pending.preferredUsername ? <p>{messages.login.bindSuggestedUsernameLabel}: {pending.preferredUsername}</p> : null}
+          {pending.email ? <p>{messages.login.bindEmailLabel}: {pending.email}</p> : null}
+        </div>
         <div className="mt-8">
-          {loginError ? (
+          {bindError ? (
             <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {loginError}
+              {bindError}
             </p>
           ) : null}
-          <LoginForm locale={locale} messages={messages} oidcEnabled={oidcEnabled} />
+          <OidcBindForm locale={locale} messages={messages} suggestedUsername={pending.preferredUsername} />
         </div>
-        {!oidcEnabled ? (
-          <p className="mt-4 text-xs text-[color:var(--text-tertiary)]">{messages.login.oidcUnavailableHint}</p>
-        ) : null}
       </div>
     </main>
   );

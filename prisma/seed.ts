@@ -4,6 +4,12 @@ import { PrismaClient, UserRole } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  const bootstrapMode = process.env.ADMIN_BOOTSTRAP_MODE ?? "seed";
+  if (bootstrapMode !== "seed") {
+    console.log(`Skipping admin seed because ADMIN_BOOTSTRAP_MODE=${bootstrapMode}`);
+    return;
+  }
+
   const username = process.env.SEED_ADMIN_USERNAME;
   const password = process.env.SEED_ADMIN_PASSWORD;
   const agentId = process.env.SEED_ADMIN_AGENT_ID ?? "main";

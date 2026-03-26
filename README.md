@@ -8,7 +8,7 @@ MiniTeamClawUI adds account-based access, per-user agent mapping, session persis
 
 ## Highlights
 
-- Per-user login with cookie-based sessions and Argon2 password hashing
+- Per-user login with cookie-based sessions, Argon2 password hashing, and optional OIDC SSO
 - Per-member `openclawAgentId` mapping for routing users to different OpenClaw agents
 - Multi-session chat UI with persisted local history
 - Server-side attachment upload flow that maps files into OpenClaw-readable host paths
@@ -29,7 +29,7 @@ MiniTeamClawUI adds account-based access, per-user agent mapping, session persis
 
 ## How It Works
 
-1. Users authenticate against the local app database.
+1. Users authenticate against the local app database or an external OIDC identity provider.
 2. The Next.js server opens and manages the connection to the OpenClaw gateway.
 3. Chat sessions, streamed run events, cached messages, attachments, and user metadata are stored locally in PostgreSQL.
 4. Uploaded files are saved into a shared directory and sent to OpenClaw as host-visible file references.
@@ -53,6 +53,7 @@ This separation keeps gateway credentials and operator capabilities on the serve
 - Assign each user an `openclawAgentId`
 - Enable, disable, and delete users
 - Force password resets
+- View which local users have already linked an OIDC identity
 
 ### Localization
 
@@ -117,9 +118,11 @@ The provided container startup command runs:
 - `npm run db:seed`
 - `npm run start`
 
+For local development, keep `ADMIN_BOOTSTRAP_MODE=seed` so `npm run db:seed` creates the default admin from `SEED_ADMIN_*`.
+
 ### Production Image
 
-The repository now includes a production-oriented Docker Compose file at [`docker-compose.prod.yml`](./docker-compose.prod.yml) that pulls the prebuilt image `ihunterdev/miniteamclawui:0.0.1`.
+The repository now includes a production-oriented Docker Compose file at [`docker-compose.prod.yml`](./docker-compose.prod.yml) that pulls the prebuilt image `ihunterdev/miniteamclawui:0.0.2-oidc-no-email`.
 
 Recommended setup flow:
 
@@ -131,7 +134,8 @@ docker compose -f docker-compose.prod.yml up -d
 
 Notes:
 
-- Update `.env.prod` before first start, especially `SESSION_SECRET`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, and the seeded admin password.
+- Update `.env.prod` before first start, especially `SESSION_SECRET`, `OPENCLAW_GATEWAY_URL`, and `OPENCLAW_GATEWAY_TOKEN`.
+- Production defaults to `ADMIN_BOOTSTRAP_MODE=ui`. After the gateway check passes, create the first admin from the setup page.
 - The compose file binds the app to `127.0.0.1:3000` by default.
 - PostgreSQL data is persisted in the named Docker volume `postgres_data`.
 - The image uses `pull_policy: always`, so Docker will check for a newer image version when starting the stack.
@@ -165,6 +169,7 @@ The project validates environment variables in `src/lib/env.ts`.
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma. |
 | `SESSION_SECRET` | Yes | Session signing secret. Must be at least 32 characters. |
+| `ADMIN_BOOTSTRAP_MODE` | No | Administrator bootstrap mode. Use `seed` for development and `ui` for production-style first-run setup. Default: `seed`. |
 | `OPENCLAW_GATEWAY_URL` | Yes | WebSocket URL for the OpenClaw gateway. |
 | `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
 | `OPENCLAW_UPLOAD_DIR_CONTAINER` | No | Upload directory as seen by this app. Default: `/shared/uploads`. |
@@ -172,9 +177,13 @@ The project validates environment variables in `src/lib/env.ts`.
 | `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `1073741824` (1 GiB). |
 | `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
 | `APP_URL` | No | Public app URL used where absolute URLs are needed. |
-| `SEED_ADMIN_USERNAME` | Seed only | Initial admin username used by `npm run db:seed`. |
-| `SEED_ADMIN_PASSWORD` | Seed only | Initial admin password used by `npm run db:seed`. |
-| `SEED_ADMIN_AGENT_ID` | Seed only | Initial admin `openclawAgentId`. Defaults to `main`. |
+| `OIDC_ISSUER` | No | OIDC issuer URL. Enable together with `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `APP_URL`. |
+| `OIDC_CLIENT_ID` | No | OIDC client ID for SSO login. |
+| `OIDC_CLIENT_SECRET` | No | OIDC client secret for SSO login. |
+| `OIDC_SCOPES` | No | Space-delimited OIDC scopes. Default: `openid profile`. |
+| `SEED_ADMIN_USERNAME` | Seed mode only | Initial admin username used by `npm run db:seed` when `ADMIN_BOOTSTRAP_MODE=seed`. |
+| `SEED_ADMIN_PASSWORD` | Seed mode only | Initial admin password used by `npm run db:seed` when `ADMIN_BOOTSTRAP_MODE=seed`. |
+| `SEED_ADMIN_AGENT_ID` | Seed mode only | Initial admin `openclawAgentId` used by `npm run db:seed`. Defaults to `main`. |
 
 ## Environment Presets
 
@@ -198,6 +207,7 @@ The Prisma schema defines the following main entities:
 
 - `User`
 - `UserSession`
+- `UserIdentity`
 - `ChatSession`
 - `ChatMessageCache`
 - `Attachment`

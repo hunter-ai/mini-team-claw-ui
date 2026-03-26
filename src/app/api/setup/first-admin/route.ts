@@ -3,6 +3,7 @@ import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { getStartupEnv } from "@/lib/env";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +19,10 @@ export async function POST(request: Request) {
   const locale = await resolveRequestLocale(request);
   const messages = await getDictionary(locale);
   const [setupStatus, currentUser] = await Promise.all([getSetupStatus(), getCurrentUser()]);
+
+  if (getStartupEnv().ADMIN_BOOTSTRAP_MODE !== "ui") {
+    return NextResponse.json({ error: messages.setup.firstAdminSeedModeOnly }, { status: 409 });
+  }
 
   if (setupStatus.hasActiveAdmin) {
     if (!currentUser || currentUser.role !== UserRole.ADMIN) {

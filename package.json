@@ -16,6 +16,7 @@
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
     "@prisma/client": "^6.19.2",
+    "jose": "^6.2.2",
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",

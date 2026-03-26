@@ -10,6 +10,31 @@ import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
 import { getSetupStatus, redirectToSetupIfNeeded } from "@/lib/setup";
 
+function serializeAdminUser(user: {
+  id: string;
+  username: string;
+  role: "ADMIN" | "MEMBER";
+  openclawAgentId: string;
+  isActive: boolean;
+  identities: Array<{ issuer: string; createdAt: Date }>;
+}) {
+  const identity = user.identities[0] ?? null;
+
+  return {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    openclawAgentId: user.openclawAgentId,
+    isActive: user.isActive,
+    oidcBinding: identity
+      ? {
+          issuer: identity.issuer,
+          linkedAt: identity.createdAt.toISOString(),
+        }
+      : null,
+  };
+}
+
 export async function AdminPage({ locale }: { locale: Locale }) {
   await redirectToSetupIfNeeded(locale);
   await requireAdminInLocale(locale);
@@ -23,6 +48,15 @@ export async function AdminPage({ locale }: { locale: Locale }) {
         role: true,
         openclawAgentId: true,
         isActive: true,
+        identities: {
+          where: { provider: "oidc" },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: {
+            issuer: true,
+            createdAt: true,
+          },
+        },
       },
     }),
     getSetupStatus(),
@@ -48,7 +82,7 @@ export async function AdminPage({ locale }: { locale: Locale }) {
           <LogoutButton locale={locale} messages={messages} />
         </div>
       </header>
-      <AdminUserManager locale={locale} messages={messages} initialUsers={users} />
+      <AdminUserManager locale={locale} messages={messages} initialUsers={users.map(serializeAdminUser)} />
       <section className="mt-6">
         <header className="mb-4 px-1">
           <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">
