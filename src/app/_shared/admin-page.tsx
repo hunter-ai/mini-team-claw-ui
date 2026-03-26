@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminBackupPanel } from "@/components/admin-backup-panel";
 import { AdminUserManager } from "@/components/admin-user-manager";
 import { SystemSetupPanel } from "@/components/system-setup-panel";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -83,6 +84,9 @@ export async function AdminPage({ locale }: { locale: Locale }) {
         </div>
       </header>
       <AdminUserManager locale={locale} messages={messages} initialUsers={users.map(serializeAdminUser)} />
+      <section className="mt-6">
+        <AdminBackupPanel locale={locale} messages={messages} />
+      </section>
       <section className="mt-6">
         <header className="mb-4 px-1">
           <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">
