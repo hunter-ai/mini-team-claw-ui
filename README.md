@@ -71,7 +71,9 @@ This separation keeps gateway credentials and operator capabilities on the serve
 |-- scripts/                 # Small project helper scripts
 |-- Dockerfile
 |-- docker-compose.yml
+|-- docker-compose.prod.yml
 |-- .env.dev.example
+|-- .env.prod.example
 |-- .env.docker.example
 |-- .env.example
 ```
@@ -114,6 +116,25 @@ The provided container startup command runs:
 - `npx prisma db push`
 - `npm run db:seed`
 - `npm run start`
+
+### Production Image
+
+The repository now includes a production-oriented Docker Compose file at [`docker-compose.prod.yml`](./docker-compose.prod.yml) that pulls the prebuilt image `ihunterdev/miniteamclawui:0.0.1`.
+
+Recommended setup flow:
+
+```bash
+cp .env.prod.example .env.prod
+mkdir -p /home/openclaw/miniteamclaw/uploads
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Notes:
+
+- Update `.env.prod` before first start, especially `SESSION_SECRET`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, and the seeded admin password.
+- The compose file binds the app to `127.0.0.1:3000` by default.
+- PostgreSQL data is persisted in the named Docker volume `postgres_data`.
+- The image uses `pull_policy: always`, so Docker will check for a newer image version when starting the stack.
 
 ## Usage Notes
 
@@ -169,6 +190,8 @@ These commands copy one of the bundled templates to `.env`:
 - `.env.dev.example`
 - `.env.docker.example`
 
+For the production image flow, use `.env.prod.example` as the starting point for `.env.prod`.
+
 ## Database
 
 The Prisma schema defines the following main entities:
@@ -204,6 +227,7 @@ The app stores local chat/session state even though model execution happens thro
 - The web server must be able to reach the gateway over WebSocket.
 - The upload directory mapping must be correct on both the app side and the OpenClaw side.
 - The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
+- The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.1` and reads environment values from `.env.prod` by default.
 - In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:19001`.
 
 ## Current Scope
