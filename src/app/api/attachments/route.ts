@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SessionStatus } from "@prisma/client";
+import { AttachmentSource, SessionStatus } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       data: {
         userId: user.id,
         sessionId: session.id,
+        source: AttachmentSource.UPLOAD,
         originalName: file.name,
         mime: file.type,
         size: file.size,

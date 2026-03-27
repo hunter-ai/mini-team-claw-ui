@@ -170,10 +170,13 @@ The project validates environment variables in `src/lib/env.ts`.
 | `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma. |
 | `SESSION_SECRET` | Yes | Session signing secret. Must be at least 32 characters. |
 | `ADMIN_BOOTSTRAP_MODE` | No | Administrator bootstrap mode. Use `seed` for development and `ui` for production-style first-run setup. Default: `seed`. |
+| `ENABLE_LAZYCAT_FILE_PICKER` | No | Set to `true` to expose the Lazycat NAS file picker entry in chat when the runtime supports it. Default: `false`. |
+| `LAZYCAT_PICKER_PATH_PREFIX` | No | Absolute Lazycat path prefix stripped from picker results before host-path mapping. Default: `/`. |
 | `OPENCLAW_GATEWAY_URL` | Yes | WebSocket URL for the OpenClaw gateway. |
 | `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
 | `OPENCLAW_UPLOAD_DIR_CONTAINER` | No | Upload directory as seen by this app. Default: `/shared/uploads`. |
 | `OPENCLAW_UPLOAD_DIR_HOST` | No | Matching host path that OpenClaw can read. Default: `/srv/miniteamclaw/uploads`. |
+| `OPENCLAW_LAZYCAT_HOST_ROOT` | No | Host root used to map Lazycat picker paths into OpenClaw-readable paths. Default: `/`. |
 | `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `1073741824` (1 GiB). |
 | `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
 | `APP_URL` | No | Public app URL used where absolute URLs are needed. |
@@ -237,6 +240,7 @@ The app stores local chat/session state even though model execution happens thro
 - The browser does not connect to OpenClaw directly.
 - The web server must be able to reach the gateway over WebSocket.
 - The upload directory mapping must be correct on both the app side and the OpenClaw side.
+- Lazycat direct attachments map picker `filename` values into `OPENCLAW_LAZYCAT_HOST_ROOT` instead of copying files into the upload directory.
 - The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
 - The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.1` and reads environment values from `.env.prod` by default.
 - In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:19001`.

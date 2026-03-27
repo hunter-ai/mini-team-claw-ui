@@ -15,6 +15,7 @@ import type {
   ClientRunActivityEntry,
   ClientRunHistoryItem,
 } from "@/lib/chat-run-events";
+import { LazycatFilePickerBridge } from "@/components/lazycat-file-picker-bridge";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { formatRelativeDate } from "@/lib/utils";
 import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
@@ -25,6 +26,7 @@ import { LogoutButton } from "@/components/logout-button";
 import type { SessionContextUsage } from "@/lib/session-context-usage";
 import { OPENCLAW_SLASH_COMMANDS, type SlashCommandDefinition } from "@/lib/slash-commands";
 import { CodeBlock } from "@/components/code-block";
+import type { LazycatPickerSubmitDetail } from "@/lib/lazycat-attachments";
 
 type Attachment = {
   id: string;
@@ -387,6 +389,22 @@ function formatFileSize(size: number) {
   }
 
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function normalizeUploadFiles(files: FileList | File[] | Iterable<File> | null | undefined) {
+  if (!files) {
+    return [];
+  }
+
+  if (files instanceof FileList) {
+    return Array.from(files);
+  }
+
+  if (Array.isArray(files)) {
+    return files;
+  }
+
+  return Array.from(files);
 }
 
 function compareSkills(left: Skill, right: Skill) {
@@ -2257,6 +2275,7 @@ export function ChatShell({
   initialMessages,
   initialRunHistory,
   initialActiveRun,
+  lazycatFilePickerEnabled,
   user,
 }: {
   locale: Locale;
@@ -2268,6 +2287,7 @@ export function ChatShell({
   initialMessages: Message[];
   initialRunHistory: ClientRunHistoryItem[];
   initialActiveRun: SessionRun | null;
+  lazycatFilePickerEnabled: boolean;
   user: UserShape;
 }) {
   const pageSize = 20;
@@ -2342,6 +2362,8 @@ export function ChatShell({
   const [highlightedSlashIndex, setHighlightedSlashIndex] = useState(0);
   const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
   const [dockedComposerHeight, setDockedComposerHeight] = useState(0);
+  const [lazycatFilePickerAvailable, setLazycatFilePickerAvailable] = useState(false);
+  const [lazycatPickerOpen, setLazycatPickerOpen] = useState(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionsScrollerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -4021,8 +4043,9 @@ export function ChatShell({
     setShareSubmitting(false);
   }
 
-  async function uploadFiles(files: FileList | null) {
-    if (!files?.length || !activeSessionId || activeSessionReadOnly) {
+  async function uploadFiles(files: FileList | File[] | Iterable<File> | null | undefined) {
+    const filesToUpload = normalizeUploadFiles(files);
+    if (!filesToUpload.length || !activeSessionId || activeSessionReadOnly) {
       return;
     }
 
@@ -4030,7 +4053,7 @@ export function ChatShell({
     setErrorBySession((current) => ({ ...current, [activeSessionId]: null }));
     const nextAttachments: Attachment[] = [];
 
-    for (const file of Array.from(files)) {
+    for (const file of filesToUpload) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("sessionId", activeSessionId);
@@ -4058,6 +4081,65 @@ export function ChatShell({
       [activeSessionId]: [...(current[activeSessionId] ?? []), ...nextAttachments],
     }));
     setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
+  }
+
+  async function attachLazycatPaths(detail: LazycatPickerSubmitDetail) {
+    if (!activeSessionId || activeSessionReadOnly) {
+      return;
+    }
+
+    setUploadingBySession((current) => ({ ...current, [activeSessionId]: true }));
+    setErrorBySession((current) => ({ ...current, [activeSessionId]: null }));
+
+    const response = await localeFetch("/api/attachments/lazycat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        pickerDetail: detail,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setErrorBySession((current) => ({
+        ...current,
+        [activeSessionId]: payload.error ?? messages.chat.lazycatEmptySelection,
+      }));
+      setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
+      return;
+    }
+
+    const payload = (await response.json()) as { attachments: Attachment[] };
+    setPendingAttachmentsBySession((current) => ({
+      ...current,
+      [activeSessionId]: [...(current[activeSessionId] ?? []), ...payload.attachments],
+    }));
+    setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
+  }
+
+  const handleLazycatAvailabilityChange = useCallback((available: boolean) => {
+    setLazycatFilePickerAvailable(available);
+    if (!available) {
+      setLazycatPickerOpen(false);
+    }
+  }, []);
+
+  const handleLazycatError = useCallback((message: string) => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    setErrorBySession((current) => ({
+      ...current,
+      [activeSessionId]: message || messages.chat.lazycatUnavailable,
+    }));
+  }, [activeSessionId, messages.chat.lazycatUnavailable]);
+
+  async function handleLazycatSubmit(detail: LazycatPickerSubmitDetail) {
+    await attachLazycatPaths(detail);
   }
 
   async function submitActiveMessage() {
@@ -4666,6 +4748,16 @@ export function ChatShell({
                   />
                   {uploading ? messages.chat.uploading : messages.chat.attach}
                 </label>
+                {lazycatFilePickerEnabled && lazycatFilePickerAvailable ? (
+                  <button
+                    type="button"
+                    onClick={() => setLazycatPickerOpen(true)}
+                    disabled={composerDisabled || isBootstrap || uploading || loading}
+                    className="ui-button-secondary inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]"
+                  >
+                    {messages.chat.lazycatAttach}
+                  </button>
+                ) : null}
                 <div ref={skillsPopoverRef} className="relative">
                   {skillsOpen && !isCreateSessionOnly ? (
                     <div className="absolute bottom-full left-0 z-20 mb-2 hidden sm:block sm:w-[min(40rem,calc(100vw-4rem))] sm:max-w-[calc(100vw-4rem)]">
@@ -5119,6 +5211,17 @@ export function ChatShell({
             )}
           </div>
         </div>
+      ) : null}
+
+      {lazycatFilePickerEnabled ? (
+        <LazycatFilePickerBridge
+          messages={messages}
+          open={lazycatPickerOpen}
+          onClose={() => setLazycatPickerOpen(false)}
+          onSubmit={handleLazycatSubmit}
+          onAvailabilityChange={handleLazycatAvailabilityChange}
+          onError={handleLazycatError}
+        />
       ) : null}
     </div>
   );

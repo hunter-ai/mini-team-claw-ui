@@ -3,6 +3,7 @@ import { ChatShell } from "@/components/chat-shell";
 import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { serializeSessionSummary } from "@/lib/chat-response";
 import { requireUserInLocale } from "@/lib/auth";
+import { getStartupEnv } from "@/lib/env";
 import { toChatMessageViews } from "@/lib/chat-presenter";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
@@ -24,6 +25,7 @@ export async function ChatPage({
   await redirectToSetupIfNeeded(locale);
   const user = await requireUserInLocale(locale);
   const messages = await getDictionary(locale);
+  const env = getStartupEnv();
   const query = await searchParams;
   const { sessions, pageInfo } = await listChatSessions(user.id, { limit: SESSION_PAGE_SIZE });
   const requestedSessionId =
@@ -49,6 +51,7 @@ export async function ChatPage({
         initialMessages={activeSession ? toChatMessageViews(activeSession.messages, activeSession.attachments) : []}
         initialRunHistory={activeSession ? activeSession.runs.map((run) => serializeRunHistoryItem(run)) : []}
         initialActiveRun={activeSession?.runs[0] ? serializeSessionSummary(activeSession).activeRun : null}
+        lazycatFilePickerEnabled={env.ENABLE_LAZYCAT_FILE_PICKER}
         user={{
           username: user.username,
           role: user.role,

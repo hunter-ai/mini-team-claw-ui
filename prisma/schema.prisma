@@ -137,11 +137,13 @@ model Attachment {
   id            String      @id @default(cuid())
   userId        String
   sessionId      String?
+  source        AttachmentSource @default(UPLOAD)
   originalName  String
   mime          String
   size          Int
-  sha256        String
-  containerPath String
+  sha256        String?
+  containerPath String?
+  sourcePath    String?
   hostPath      String
   createdAt     DateTime    @default(now())
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -149,6 +151,11 @@ model Attachment {
 
   @@index([userId, createdAt])
   @@index([sessionId])
+}
+
+enum AttachmentSource {
+  UPLOAD
+  LAZYCAT_PATH
 }
 
 model ChatRun {
