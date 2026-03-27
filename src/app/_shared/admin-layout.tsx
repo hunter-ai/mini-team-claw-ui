@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { AdminShellFrame } from "@/components/admin-shell-frame";
 import { requireAdminInLocale } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
@@ -12,6 +13,7 @@ export async function AdminLayout({
   locale: Locale;
   children: React.ReactNode;
 }) {
+  await connection();
   await redirectToSetupIfNeeded(locale);
   const [, messages] = await Promise.all([requireAdminInLocale(locale), getDictionary(locale)]);
   const sections = getAdminNavigation(messages);

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { OidcBindForm } from "@/components/oidc-bind-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getCurrentUser } from "@/lib/auth";
@@ -24,6 +25,7 @@ export async function OidcBindPage({
   locale: Locale;
   searchParams?: Promise<{ error?: string | string[] }>;
 }) {
+  await connection();
   await redirectToSetupIfNeeded(locale);
   const user = await getCurrentUser();
   if (user) {

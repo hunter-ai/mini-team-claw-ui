@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
 import { localizeHref } from "@/lib/i18n/routing";
 import { redirectToSetupIfNeeded } from "@/lib/setup";
 
 export async function HomePage({ locale }: { locale: Locale }) {
+  await connection();
   await redirectToSetupIfNeeded(locale);
   const user = await getCurrentUser();
   if (user) {

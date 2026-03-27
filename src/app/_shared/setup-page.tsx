@@ -1,4 +1,5 @@
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { connection } from "next/server";
 import { SystemSetupPanel } from "@/components/system-setup-panel";
 import { getCurrentUser } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/config";
@@ -6,6 +7,7 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { redirectAwayFromSetupWhenComplete, getSetupStatus } from "@/lib/setup";
 
 export async function SetupPage({ locale }: { locale: Locale }) {
+  await connection();
   await redirectAwayFromSetupWhenComplete(locale);
   const [messages, status, user] = await Promise.all([
     getDictionary(locale),

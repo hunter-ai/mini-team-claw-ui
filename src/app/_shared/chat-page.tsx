@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { ChatShell } from "@/components/chat-shell";
 import { serializeRunHistoryItem } from "@/lib/chat-run-events";
 import { serializeSessionSummary } from "@/lib/chat-response";
@@ -19,6 +20,7 @@ export async function ChatPage({
   locale: Locale;
   searchParams: Promise<{ session?: string | string[] }>;
 }) {
+  await connection();
   await redirectToSetupIfNeeded(locale);
   const user = await requireUserInLocale(locale);
   const messages = await getDictionary(locale);

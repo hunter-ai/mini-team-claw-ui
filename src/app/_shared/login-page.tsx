@@ -1,5 +1,6 @@
 import { LoginForm } from "@/components/login-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { connection } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getStartupEnv } from "@/lib/env";
 import type { Locale } from "@/lib/i18n/config";
@@ -41,6 +42,7 @@ export async function LoginPage({
   locale: Locale;
   searchParams?: Promise<{ error?: string | string[] }>;
 }) {
+  await connection();
   await redirectToSetupIfNeeded(locale);
   const user = await getCurrentUser();
   if (user) {
