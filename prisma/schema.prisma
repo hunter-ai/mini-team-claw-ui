@@ -31,6 +31,11 @@ enum ChatRunStatus {
   ABORTED
 }
 
+enum SessionShareAccessMode {
+  PUBLIC
+  PASSWORD
+}
+
 model User {
   id              String        @id @default(cuid())
   username        String        @unique
@@ -41,6 +46,7 @@ model User {
   sessions        UserSession[]
   identities      UserIdentity[]
   chatSessions    ChatSession[]
+  sessionShares   ChatSessionShare[]
   chatRuns        ChatRun[]
   attachments     Attachment[]
   createdAt       DateTime      @default(now())
@@ -91,6 +97,25 @@ model ChatSession {
   messages          ChatMessageCache[]
   runs              ChatRun[]
   attachments       Attachment[]
+  share             ChatSessionShare?
+
+  @@index([userId, updatedAt])
+}
+
+model ChatSessionShare {
+  id                    String                 @id @default(cuid())
+  sessionId             String                 @unique
+  userId                String
+  publicId              String                 @unique
+  accessMode            SessionShareAccessMode
+  passwordHash          String?
+  snapshotSchemaVersion Int                    @default(1)
+  snapshotJson          Json
+  accessVersion         Int                    @default(1)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  session               ChatSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, updatedAt])
 }

@@ -96,6 +96,13 @@ type Session = {
   activeRun: SessionRun | null;
 };
 
+type SessionShare = {
+  enabled: boolean;
+  shareUrl: string | null;
+  accessMode: "PUBLIC" | "PASSWORD" | null;
+  snapshotUpdatedAt: string | null;
+};
+
 type PairingState = {
   status: "pairing_required";
   message: string;
@@ -1530,6 +1537,21 @@ function WrenchIcon() {
   );
 }
 
+function ShareIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
+      <path
+        d="M7.5 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm5 5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm0-10a2.5 2.5 0 1 0 0 5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path d="m9.55 8.85 2.9 1.8m-2.9 0 2.9-1.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 function StopSquareIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="size-4">
@@ -2303,6 +2325,13 @@ export function ChatShell({
   const [renameTitle, setRenameTitle] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
+  const [shareState, setShareState] = useState<SessionShare | null>(null);
+  const [shareAccessMode, setShareAccessMode] = useState<"PUBLIC" | "PASSWORD">("PUBLIC");
+  const [sharePassword, setSharePassword] = useState("");
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareSubmitting, setShareSubmitting] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
@@ -2320,6 +2349,7 @@ export function ChatShell({
   const messagesBottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const dockedComposerRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const sharePasswordInputRef = useRef<HTMLInputElement | null>(null);
   const shouldSnapMessagesToBottomRef = useRef(true);
   const shouldStickMessagesToBottomRef = useRef(false);
   const isProgrammaticMessagesScrollRef = useRef(false);
@@ -2354,6 +2384,10 @@ export function ChatShell({
     () => sessions.find((session) => session.id === renameSessionId) ?? null,
     [renameSessionId, sessions],
   );
+  const shareTargetSession = useMemo(
+    () => sessions.find((session) => session.id === shareSessionId) ?? null,
+    [shareSessionId, sessions],
+  );
   const sessionMessages = useMemo(
     () => (activeSessionId ? messagesBySession[activeSessionId] ?? [] : []),
     [activeSessionId, messagesBySession],
@@ -2379,6 +2413,17 @@ export function ChatShell({
   );
   const activeRunSegmentation = activeRun ? contentSegmentsByRunId[activeRun.id] ?? null : null;
   const activeStreamingRunId = activeRun && isActiveSessionRunStatus(activeRun.status) ? activeRun.id : null;
+  const shareCopyUrl = useMemo(() => {
+    if (!shareState?.shareUrl) {
+      return "";
+    }
+
+    if (shareState.shareUrl.startsWith("/") && typeof window !== "undefined") {
+      return new URL(shareState.shareUrl, window.location.origin).toString();
+    }
+
+    return shareState.shareUrl;
+  }, [shareState?.shareUrl]);
   const sortedSkills = useMemo(
     () =>
       skills
@@ -3218,6 +3263,14 @@ export function ChatShell({
     renameInputRef.current.select();
   }, [renameSessionId]);
 
+  useEffect(() => {
+    if (!shareSessionId || shareAccessMode !== "PASSWORD" || !sharePasswordInputRef.current) {
+      return;
+    }
+
+    sharePasswordInputRef.current.focus();
+  }, [shareAccessMode, shareSessionId]);
+
   const loadSkills = useCallback(async (force = false) => {
     if (skillsLoading || (skillsFetched && !force)) {
       return;
@@ -3770,6 +3823,40 @@ export function ChatShell({
     setRenameSubmitting(false);
   }, [isSidebarCollapsed]);
 
+  const openShareModal = useCallback(async (session: Session) => {
+    setShareSessionId(session.id);
+    setShareState(null);
+    setShareAccessMode("PUBLIC");
+    setSharePassword("");
+    setShareError(null);
+    setShareLoading(true);
+    setShareSubmitting(false);
+
+    const response = await localeFetch(`/api/sessions/${session.id}/share`).catch((fetchError) => fetchError);
+    if (response instanceof Error) {
+      setShareError(response.message);
+      setShareLoading(false);
+      return;
+    }
+
+    const rawText = await response.text();
+    if (!response.ok) {
+      try {
+        const payload = JSON.parse(rawText) as { error?: string };
+        setShareError(payload.error ?? messages.chat.shareFailedToLoad);
+      } catch {
+        setShareError(rawText || messages.chat.shareFailedToLoad);
+      }
+      setShareLoading(false);
+      return;
+    }
+
+    const payload = JSON.parse(rawText) as { share: SessionShare };
+    setShareState(payload.share);
+    setShareAccessMode(payload.share.accessMode ?? "PUBLIC");
+    setShareLoading(false);
+  }, [localeFetch, messages.chat.shareFailedToLoad]);
+
   const closeRenameModal = useCallback(() => {
     if (renameSubmitting) {
       return;
@@ -3779,6 +3866,19 @@ export function ChatShell({
     setRenameTitle("");
     setRenameError(null);
   }, [renameSubmitting]);
+
+  const closeShareModal = useCallback(() => {
+    if (shareSubmitting) {
+      return;
+    }
+
+    setShareSessionId(null);
+    setShareState(null);
+    setShareAccessMode("PUBLIC");
+    setSharePassword("");
+    setShareError(null);
+    setShareLoading(false);
+  }, [shareSubmitting]);
 
   async function submitRenameSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3832,6 +3932,93 @@ export function ChatShell({
     setRenameSessionId(null);
     setRenameTitle("");
     setRenameError(null);
+  }
+
+  async function submitShareSession(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!shareTargetSession || shareSubmitting) {
+      return;
+    }
+
+    if (shareAccessMode === "PASSWORD" && !sharePassword.trim() && !shareState?.enabled) {
+      setShareError(messages.share.passwordRequired);
+      return;
+    }
+
+    setShareSubmitting(true);
+    setShareError(null);
+
+    const response = await localeFetch(`/api/sessions/${shareTargetSession.id}/share`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        enabled: true,
+        accessMode: shareAccessMode,
+        password: sharePassword.trim() || undefined,
+      }),
+    }).catch((fetchError) => fetchError);
+
+    if (response instanceof Error) {
+      setShareError(response.message);
+      setShareSubmitting(false);
+      return;
+    }
+
+    const rawText = await response.text();
+    if (!response.ok) {
+      try {
+        const payload = JSON.parse(rawText) as { error?: string };
+        setShareError(payload.error ?? messages.chat.shareFailedToUpdate);
+      } catch {
+        setShareError(rawText || messages.chat.shareFailedToUpdate);
+      }
+      setShareSubmitting(false);
+      return;
+    }
+
+    const payload = JSON.parse(rawText) as { share: SessionShare };
+    setShareState(payload.share);
+    setShareAccessMode(payload.share.accessMode ?? shareAccessMode);
+    setSharePassword("");
+    setShareSubmitting(false);
+  }
+
+  async function stopSharingSession() {
+    if (!shareTargetSession || shareSubmitting) {
+      return;
+    }
+
+    setShareSubmitting(true);
+    setShareError(null);
+
+    const response = await localeFetch(`/api/sessions/${shareTargetSession.id}/share`, {
+      method: "DELETE",
+    }).catch((fetchError) => fetchError);
+
+    if (response instanceof Error) {
+      setShareError(response.message);
+      setShareSubmitting(false);
+      return;
+    }
+
+    const rawText = await response.text();
+    if (!response.ok) {
+      try {
+        const payload = JSON.parse(rawText) as { error?: string };
+        setShareError(payload.error ?? messages.chat.shareFailedToUpdate);
+      } catch {
+        setShareError(rawText || messages.chat.shareFailedToUpdate);
+      }
+      setShareSubmitting(false);
+      return;
+    }
+
+    const payload = JSON.parse(rawText) as { share: SessionShare };
+    setShareState(payload.share);
+    setShareAccessMode("PUBLIC");
+    setSharePassword("");
+    setShareSubmitting(false);
   }
 
   async function uploadFiles(files: FileList | null) {
@@ -4659,6 +4846,20 @@ export function ChatShell({
             </h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {activeSession ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void openShareModal(activeSession);
+                }}
+                className="ui-button-secondary inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-medium"
+                aria-label={messages.chat.shareSession}
+                title={messages.chat.shareSession}
+              >
+                <ShareIcon />
+                <span>{messages.chat.shareOpen}</span>
+              </button>
+            ) : null}
             <LanguageSwitcher locale={locale} messages={messages} />
           </div>
         </div>
@@ -4793,6 +4994,129 @@ export function ChatShell({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {shareTargetSession ? (
+        <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
+          <button
+            type="button"
+            aria-label={messages.chat.shareSession}
+            onClick={closeShareModal}
+            className="absolute inset-0"
+          />
+          <div className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4">
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.chat.shareSession}</p>
+              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.shareDescription}</p>
+            </div>
+
+            {shareLoading ? (
+              <p className="text-sm text-[color:var(--text-secondary)]">{messages.chat.shareLoading}</p>
+            ) : (
+              <form onSubmit={submitShareSession}>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 rounded-[0.8rem] border border-[color:var(--border-subtle)] px-3 py-2">
+                    <input
+                      type="radio"
+                      name="share-access-mode"
+                      checked={shareAccessMode === "PUBLIC"}
+                      onChange={() => setShareAccessMode("PUBLIC")}
+                    />
+                    <span className="text-sm text-[color:var(--text-primary)]">{messages.chat.sharePublicOption}</span>
+                  </label>
+                  <label className="flex items-start gap-2 rounded-[0.8rem] border border-[color:var(--border-subtle)] px-3 py-2">
+                    <input
+                      type="radio"
+                      name="share-access-mode"
+                      checked={shareAccessMode === "PASSWORD"}
+                      onChange={() => setShareAccessMode("PASSWORD")}
+                    />
+                    <div>
+                      <p className="text-sm text-[color:var(--text-primary)]">{messages.chat.sharePasswordOption}</p>
+                      <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.sharePasswordHint}</p>
+                    </div>
+                  </label>
+                </div>
+
+                {shareAccessMode === "PASSWORD" ? (
+                  <div className="mt-3">
+                    <input
+                      ref={sharePasswordInputRef}
+                      type="password"
+                      value={sharePassword}
+                      onChange={(event) => {
+                        setSharePassword(event.target.value);
+                        if (shareError) {
+                          setShareError(null);
+                        }
+                      }}
+                      disabled={shareSubmitting}
+                      className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
+                      placeholder={messages.chat.sharePasswordPlaceholder}
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-4 rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2">
+                  <p className="text-xs font-medium text-[color:var(--text-primary)]">
+                    {shareState?.enabled ? messages.chat.shareEnabled : messages.chat.shareDisabled}
+                  </p>
+                  {shareState?.shareUrl ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate text-xs text-[color:var(--text-tertiary)]">{shareCopyUrl}</p>
+                      <CopyButton
+                        text={shareCopyUrl}
+                        successLabel={messages.chat.copied}
+                        ariaLabel={messages.chat.shareCopyLink}
+                        iconClassName={COPY_ICON_CLASS_NAME}
+                        iconButtonClassName={COPY_ICON_BUTTON_CLASS_NAME}
+                      />
+                    </div>
+                  ) : null}
+                  {shareState?.snapshotUpdatedAt ? (
+                    <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
+                      {messages.chat.shareSnapshotUpdated}: {formatRelativeDate(shareState.snapshotUpdatedAt, locale, messages.common.noActivityYet)}
+                    </p>
+                  ) : null}
+                </div>
+
+                {shareError ? <p className="mt-2 text-xs text-red-600">{shareError}</p> : null}
+
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={closeShareModal}
+                    disabled={shareSubmitting}
+                    className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
+                  >
+                    {messages.common.cancel}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {shareState?.enabled ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void stopSharingSession();
+                        }}
+                        disabled={shareSubmitting}
+                        className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
+                      >
+                        {messages.chat.shareStop}
+                      </button>
+                    ) : null}
+                    <button
+                      type="submit"
+                      disabled={shareSubmitting}
+                      className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
+                    >
+                      {shareSubmitting ? messages.common.saving : messages.chat.shareUpdate}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       ) : null}
