@@ -7,6 +7,7 @@ import type { Locale } from "@/lib/i18n/config";
 import { getDictionary, type Dictionary } from "@/lib/i18n/dictionary";
 import { interpolate } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
+import { resolveLoginPrimaryAuthMethod } from "@/lib/login-cta";
 import { isOidcEnabled } from "@/lib/oidc";
 import { redirectToSetupIfNeeded } from "@/lib/setup";
 import { redirect } from "next/navigation";
@@ -56,6 +57,7 @@ export async function LoginPage({
   const loginError = resolveLoginErrorMessage(queryError, messages);
   const oidcEnabled = isOidcEnabled();
   const oidcButtonLabel = resolveOidcButtonLabel(messages);
+  const primaryAuthMethod = resolveLoginPrimaryAuthMethod(oidcEnabled);
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
@@ -82,6 +84,7 @@ export async function LoginPage({
             messages={messages}
             oidcEnabled={oidcEnabled}
             oidcButtonLabel={oidcButtonLabel}
+            primaryAuthMethod={primaryAuthMethod}
           />
         </div>
         {!oidcEnabled ? (

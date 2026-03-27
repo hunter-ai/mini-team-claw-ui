@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
 import type { Dictionary } from "@/lib/i18n/dictionary";
+import type { LoginPrimaryAuthMethod } from "@/lib/login-cta";
 import { localizeHref } from "@/lib/i18n/routing";
 
 export function LoginForm({
@@ -11,11 +12,13 @@ export function LoginForm({
   messages,
   oidcEnabled,
   oidcButtonLabel,
+  primaryAuthMethod,
 }: {
   locale: Locale;
   messages: Dictionary;
   oidcEnabled: boolean;
   oidcButtonLabel: string;
+  primaryAuthMethod: LoginPrimaryAuthMethod;
 }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -52,7 +55,9 @@ export function LoginForm({
         <>
           <a
             href={`/api/auth/oidc/start?locale=${locale}`}
-            className="ui-button-primary flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold"
+            className={`flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold ${
+              primaryAuthMethod === "oidc" ? "ui-button-primary" : "ui-button-secondary"
+            }`}
           >
             {oidcButtonLabel}
           </a>
@@ -98,7 +103,9 @@ export function LoginForm({
         <button
           type="submit"
           disabled={loading}
-          className="ui-button-secondary w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
+          className={`w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed ${
+            primaryAuthMethod === "password" ? "ui-button-primary" : "ui-button-secondary"
+          }`}
         >
           {loading ? messages.login.submitting : messages.login.submit}
         </button>
