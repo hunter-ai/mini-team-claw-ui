@@ -240,6 +240,10 @@ a {
   padding: 0.12rem 0.35rem;
   font-family: var(--font-mono);
   font-size: 0.92em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .markdown-body pre {
@@ -259,6 +263,10 @@ a {
 .markdown-body pre code {
   background: transparent;
   padding: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  max-width: none;
 }
 
 .markdown-body .code-block-shell__pre {

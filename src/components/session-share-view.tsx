@@ -87,7 +87,7 @@ function ShareMessageItem({
 
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-      <div className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${isUser ? userBubbleClassName : assistantBubbleClassName}`}>
+      <div className={`min-w-0 rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${isUser ? userBubbleClassName : assistantBubbleClassName}`}>
         <MessageBody content={message.content} isUser={isUser} messages={messages} />
         {message.skills.length || message.attachments.length ? (
           <div
@@ -159,7 +159,7 @@ function MessageBody({
   }
 
   return (
-    <div className="markdown-body text-sm leading-7">
+    <div className="markdown-body min-w-0 max-w-full text-sm leading-7">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

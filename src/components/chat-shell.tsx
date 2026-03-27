@@ -1460,7 +1460,7 @@ function MessageBody({
   }
 
   return (
-    <div className="markdown-body text-sm leading-7">
+    <div className="markdown-body min-w-0 max-w-full text-sm leading-7">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1832,7 +1832,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
-        className={`rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
+        className={`min-w-0 rounded-[0.8rem] border px-2 py-1.75 sm:px-3 sm:py-2 ${
           isUser
             ? "ml-auto w-fit max-w-[min(100%,44rem)] border-[rgba(17,24,39,0.18)] bg-[#d1d5db] text-[color:var(--text-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
             : "mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] text-[color:var(--text-primary)]"
@@ -1905,7 +1905,7 @@ const ActiveRunPanel = memo(function ActiveRunPanel({
 }) {
   return (
     <div className="flex flex-col items-start">
-      <div className="mr-auto self-start max-w-[min(124ch,calc(100%-2.5rem))] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
+      <div className="mr-auto min-w-0 self-start max-w-[min(124ch,calc(100%-2.5rem))] rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel)] px-2 py-1.75 text-[color:var(--text-primary)] sm:px-3 sm:py-2">
         <div>
           <div className="space-y-3">
             {activeRunBlocks.map((block) => {
