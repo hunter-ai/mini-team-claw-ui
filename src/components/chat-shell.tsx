@@ -961,10 +961,12 @@ function AttachmentBadge({
   attachment,
   messages,
   tone = "composer",
+  onRemove,
 }: {
   attachment: Attachment;
   messages: Dictionary;
   tone?: "composer" | "user-message" | "assistant-message";
+  onRemove?: (attachmentId: string) => void;
 }) {
   const styles =
     tone === "user-message"
@@ -984,15 +986,28 @@ function AttachmentBadge({
               "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-primary)]",
             meta: "text-[color:var(--text-tertiary)]",
         };
+  const removable = tone === "composer" && Boolean(onRemove);
 
   return (
     <span
-      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[0.9rem] border px-2.5 py-1.5 text-[10px] leading-tight sm:px-3 sm:text-[11px] ${styles.outer}`}
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-[0.9rem] border px-2.5 py-1.5 text-[10px] leading-tight sm:px-3 sm:text-[11px] ${styles.outer}`}
     >
-      <span className="max-w-full truncate font-semibold">{attachment.originalName}</span>
-      <span className={`text-[0.92em] ${styles.meta}`}>
-        {attachment.mime || messages.chat.unknown} · {formatFileSize(attachment.size)}
+      <span className="min-w-0 flex flex-1 items-center gap-1.5">
+        <span className="min-w-0 shrink truncate font-semibold">{attachment.originalName}</span>
+        <span className={`shrink-0 text-[0.92em] ${styles.meta}`}>
+          {attachment.mime || messages.chat.unknown} · {formatFileSize(attachment.size)}
+        </span>
       </span>
+      {removable ? (
+        <button
+          type="button"
+          onClick={() => onRemove?.(attachment.id)}
+          aria-label={`${messages.common.cancel} ${attachment.originalName}`}
+          className="inline-flex size-4 shrink-0 items-center justify-center text-[0.8em] leading-none opacity-70 transition-opacity hover:opacity-100"
+        >
+          <CloseIcon />
+        </button>
+      ) : null}
     </span>
   );
 }
@@ -4509,6 +4524,17 @@ export function ChatShell({
     }));
   }, [activeSessionId]);
 
+  const handleRemovePendingAttachment = useCallback((attachmentId: string) => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    setPendingAttachmentsBySession((current) => ({
+      ...current,
+      [activeSessionId]: (current[activeSessionId] ?? []).filter((attachment) => attachment.id !== attachmentId),
+    }));
+  }, [activeSessionId]);
+
   function renderComposer(options: {
     placement: "centered" | "docked";
     mode: ComposerMode;
@@ -4540,7 +4566,13 @@ export function ChatShell({
           {pendingAttachments.length ? (
             <div className="mb-1.5 flex flex-wrap gap-1">
               {pendingAttachments.map((attachment) => (
-                <AttachmentBadge key={attachment.id} attachment={attachment} messages={messages} tone="composer" />
+                <AttachmentBadge
+                  key={attachment.id}
+                  attachment={attachment}
+                  messages={messages}
+                  tone="composer"
+                  onRemove={handleRemovePendingAttachment}
+                />
               ))}
             </div>
           ) : null}
