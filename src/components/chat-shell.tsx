@@ -994,7 +994,7 @@ function AttachmentBadge({
     >
       <span className="min-w-0 flex flex-1 items-center gap-1.5">
         <span className="min-w-0 shrink truncate font-semibold">{attachment.originalName}</span>
-        <span className={`shrink-0 text-[0.92em] ${styles.meta}`}>
+        <span className={`shrink-0 ${styles.meta}`}>
           {attachment.mime || messages.chat.unknown} · {formatFileSize(attachment.size)}
         </span>
       </span>
