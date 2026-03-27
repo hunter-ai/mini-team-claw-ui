@@ -5,10 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { getStartupEnv } from "@/lib/env";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
-import {
-  lazycatPickerSubmitDetailSchema,
-  mapLazycatPickerDetailToAttachments,
-} from "@/lib/lazycat-attachments";
+import { lazycatPickerSubmitDetailSchema } from "@/lib/lazycat-attachments";
+import { mapLazycatPickerDetailToAttachments } from "@/lib/lazycat-attachments.server";
 import { prisma } from "@/lib/prisma";
 import { getChatSessionForUser } from "@/lib/session-service";
 
