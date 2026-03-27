@@ -121,7 +121,7 @@ docker compose up --build
 
 ### 生产镜像部署
 
-仓库现在额外提供了面向生产部署的 [`docker-compose.prod.yml`](./docker-compose.prod.yml)，它会直接拉取预构建镜像 `ihunterdev/miniteamclawui:0.0.2-oidc-no-email`。
+仓库现在额外提供了面向生产部署的 [`docker-compose.prod.yml`](./docker-compose.prod.yml)，它会直接拉取预构建镜像 `ihunterdev/miniteamclawui:0.0.2`。
 
 推荐的启动流程：
 
@@ -240,8 +240,8 @@ Prisma schema 目前包含以下核心实体：
 - 上传目录在应用侧和 OpenClaw 侧的映射必须一致。
 - 懒猫文件选择器会把 `filename` 映射到 `OPENCLAW_LAZYCAT_HOST_ROOT`，不会再把文件复制到上传目录。
 - 仓库内置的 `docker-compose.yml` 默认使用宿主机目录 `/home/openclaw/miniteamclaw/uploads`。
-- 仓库内置的 `docker-compose.prod.yml` 默认拉取 `ihunterdev/miniteamclawui:0.0.1`，并优先读取 `.env.prod` 里的环境变量。
-- Docker 模式下，`OPENCLAW_GATEWAY_URL` 通常会配置为 `ws://host.docker.internal:19001`。
+- 仓库内置的 `docker-compose.prod.yml` 默认拉取 `ihunterdev/miniteamclawui:0.0.2`，并优先读取 `.env.prod` 里的环境变量。
+- Docker 模式下，`OPENCLAW_GATEWAY_URL` 通常会配置为 `ws://host.docker.internal:18789`。
 
 ## 当前定位
 

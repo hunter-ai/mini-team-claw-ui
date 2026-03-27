@@ -122,7 +122,7 @@ For local development, keep `ADMIN_BOOTSTRAP_MODE=seed` so `npm run db:seed` cre
 
 ### Production Image
 
-The repository now includes a production-oriented Docker Compose file at [`docker-compose.prod.yml`](./docker-compose.prod.yml) that pulls the prebuilt image `ihunterdev/miniteamclawui:0.0.2-oidc-no-email`.
+The repository now includes a production-oriented Docker Compose file at [`docker-compose.prod.yml`](./docker-compose.prod.yml) that pulls the prebuilt image `ihunterdev/miniteamclawui:0.0.2`.
 
 Recommended setup flow:
 
@@ -242,8 +242,8 @@ The app stores local chat/session state even though model execution happens thro
 - The upload directory mapping must be correct on both the app side and the OpenClaw side.
 - Lazycat direct attachments map picker `filename` values into `OPENCLAW_LAZYCAT_HOST_ROOT` instead of copying files into the upload directory.
 - The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
-- The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.1` and reads environment values from `.env.prod` by default.
-- In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:19001`.
+- The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.2` and reads environment values from `.env.prod` by default.
+- In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:18789`.
 
 ## Current Scope
 
