@@ -28,6 +28,7 @@ const zh = {
     description:
       "使用分配给你的成员账号登录。每个账号都绑定一个 OpenClaw agent，只能访问该成员自己的会话。",
     signInWithSso: "使用 SSO 登录",
+    signInWithSsoBrand: "使用 {brand} 登录",
     orContinueWithPassword: "或使用本地密码",
     username: "用户名",
     usernamePlaceholder: "团队成员",

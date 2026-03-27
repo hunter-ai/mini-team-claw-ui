@@ -28,6 +28,7 @@ const en = {
     description:
       "Sign in with your assigned member account. Each account is pinned to one OpenClaw agent and only exposes that member's sessions.",
     signInWithSso: "Sign in with SSO",
+    signInWithSsoBrand: "Sign in with {brand}",
     orContinueWithPassword: "Or use local password",
     username: "Username",
     usernamePlaceholder: "team member",

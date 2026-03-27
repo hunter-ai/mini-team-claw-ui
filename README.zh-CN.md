@@ -180,6 +180,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `OIDC_CLIENT_ID` | 否 | SSO 登录使用的 OIDC client ID。 |
 | `OIDC_CLIENT_SECRET` | 否 | SSO 登录使用的 OIDC client secret。 |
 | `OIDC_SCOPES` | 否 | 以空格分隔的 OIDC scope。默认值：`openid profile`。 |
+| `OIDC_BRAND_NAME` | 否 | OIDC 登录按钮展示的可选品牌名。例如配置为 `Authing` 后，按钮会显示为 `使用 Authing 登录`。 |
 | `SEED_ADMIN_USERNAME` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，`npm run db:seed` 使用的初始管理员用户名。 |
 | `SEED_ADMIN_PASSWORD` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，`npm run db:seed` 使用的初始管理员密码。 |
 | `SEED_ADMIN_AGENT_ID` | 仅 seed 模式使用 | 当 `ADMIN_BOOTSTRAP_MODE=seed` 时，初始管理员的 `openclawAgentId`，默认 `main`。 |

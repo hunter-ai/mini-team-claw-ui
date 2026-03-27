@@ -10,10 +10,12 @@ export function LoginForm({
   locale,
   messages,
   oidcEnabled,
+  oidcButtonLabel,
 }: {
   locale: Locale;
   messages: Dictionary;
   oidcEnabled: boolean;
+  oidcButtonLabel: string;
 }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -52,7 +54,7 @@ export function LoginForm({
             href={`/api/auth/oidc/start?locale=${locale}`}
             className="ui-button-primary flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold"
           >
-            {messages.login.signInWithSso}
+            {oidcButtonLabel}
           </a>
           <div className="relative py-1 text-center">
             <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[color:var(--border-subtle)]" />

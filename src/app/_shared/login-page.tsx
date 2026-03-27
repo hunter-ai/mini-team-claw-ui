@@ -1,8 +1,10 @@
 import { LoginForm } from "@/components/login-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getCurrentUser } from "@/lib/auth";
+import { getStartupEnv } from "@/lib/env";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary, type Dictionary } from "@/lib/i18n/dictionary";
+import { interpolate } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
 import { isOidcEnabled } from "@/lib/oidc";
 import { redirectToSetupIfNeeded } from "@/lib/setup";
@@ -21,6 +23,15 @@ function resolveLoginErrorMessage(error: string | null | undefined, messages: Di
     default:
       return null;
   }
+}
+
+function resolveOidcButtonLabel(messages: Dictionary) {
+  const brandName = getStartupEnv().OIDC_BRAND_NAME?.trim();
+  if (!brandName) {
+    return messages.login.signInWithSso;
+  }
+
+  return interpolate(messages.login.signInWithSsoBrand, { brand: brandName });
 }
 
 export async function LoginPage({
@@ -42,6 +53,7 @@ export async function LoginPage({
     typeof query.error === "string" ? query.error : Array.isArray(query.error) ? query.error[0] : undefined;
   const loginError = resolveLoginErrorMessage(queryError, messages);
   const oidcEnabled = isOidcEnabled();
+  const oidcButtonLabel = resolveOidcButtonLabel(messages);
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
@@ -63,7 +75,12 @@ export async function LoginPage({
               {loginError}
             </p>
           ) : null}
-          <LoginForm locale={locale} messages={messages} oidcEnabled={oidcEnabled} />
+          <LoginForm
+            locale={locale}
+            messages={messages}
+            oidcEnabled={oidcEnabled}
+            oidcButtonLabel={oidcButtonLabel}
+          />
         </div>
         {!oidcEnabled ? (
           <p className="mt-4 text-xs text-[color:var(--text-tertiary)]">{messages.login.oidcUnavailableHint}</p>

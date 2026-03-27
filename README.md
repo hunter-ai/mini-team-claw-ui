@@ -181,6 +181,7 @@ The project validates environment variables in `src/lib/env.ts`.
 | `OIDC_CLIENT_ID` | No | OIDC client ID for SSO login. |
 | `OIDC_CLIENT_SECRET` | No | OIDC client secret for SSO login. |
 | `OIDC_SCOPES` | No | Space-delimited OIDC scopes. Default: `openid profile`. |
+| `OIDC_BRAND_NAME` | No | Optional brand name shown on the OIDC sign-in button. Example: `Authing` renders `Sign in with Authing`. |
 | `SEED_ADMIN_USERNAME` | Seed mode only | Initial admin username used by `npm run db:seed` when `ADMIN_BOOTSTRAP_MODE=seed`. |
 | `SEED_ADMIN_PASSWORD` | Seed mode only | Initial admin password used by `npm run db:seed` when `ADMIN_BOOTSTRAP_MODE=seed`. |
 | `SEED_ADMIN_AGENT_ID` | Seed mode only | Initial admin `openclawAgentId` used by `npm run db:seed`. Defaults to `main`. |

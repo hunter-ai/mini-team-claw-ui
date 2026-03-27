@@ -20,6 +20,7 @@ const startupEnvSchema = z.object({
   OIDC_CLIENT_ID: z.string().optional(),
   OIDC_CLIENT_SECRET: z.string().optional(),
   OIDC_SCOPES: z.string().optional(),
+  OIDC_BRAND_NAME: z.string().optional(),
 });
 
 let cachedStartupEnv: z.infer<typeof startupEnvSchema> | null = null;
@@ -41,6 +42,7 @@ export function getStartupEnv() {
       OIDC_CLIENT_ID: emptyToUndefined(process.env.OIDC_CLIENT_ID),
       OIDC_CLIENT_SECRET: emptyToUndefined(process.env.OIDC_CLIENT_SECRET),
       OIDC_SCOPES: emptyToUndefined(process.env.OIDC_SCOPES),
+      OIDC_BRAND_NAME: emptyToUndefined(process.env.OIDC_BRAND_NAME),
     });
   }
 
@@ -64,5 +66,6 @@ export function getStartupEnvDiagnostics() {
     oidcIssuerConfigured: Boolean(env.OIDC_ISSUER),
     oidcClientIdConfigured: Boolean(env.OIDC_CLIENT_ID),
     oidcClientSecretConfigured: Boolean(env.OIDC_CLIENT_SECRET),
+    oidcBrandNameConfigured: Boolean(env.OIDC_BRAND_NAME),
   };
 }
