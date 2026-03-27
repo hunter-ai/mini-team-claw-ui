@@ -10,7 +10,6 @@ import {
 test("buildSessionShareSnapshot keeps message order and attachment metadata", () => {
   const snapshot = buildSessionShareSnapshot({
     id: "session_1",
-    userId: "user_1",
     title: "Shared session",
     messages: [
       {
