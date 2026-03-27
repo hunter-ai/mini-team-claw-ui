@@ -1,5 +1,5 @@
-import { AdminPage } from "@/app/_shared/admin-page";
+import { AdminIndexPage } from "@/app/_shared/admin-index-page";
 
 export default async function ChineseAdminPage() {
-  return AdminPage({ locale: "zh" });
+  return AdminIndexPage({ locale: "zh" });
 }

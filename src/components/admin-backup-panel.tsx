@@ -65,7 +65,15 @@ function summarizeCounts(summary: ImportSummary, messages: Dictionary) {
     .join(" · ");
 }
 
-export function AdminBackupPanel({ locale, messages }: { locale: Locale; messages: Dictionary }) {
+export function AdminBackupPanel({
+  locale,
+  messages,
+  variant = "standalone",
+}: {
+  locale: Locale;
+  messages: Dictionary;
+  variant?: "standalone" | "embedded";
+}) {
   const [busyKind, setBusyKind] = useState<"users" | "conversations" | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [preview, setPreview] = useState<BackupPreview | null>(null);
@@ -334,22 +342,25 @@ export function AdminBackupPanel({ locale, messages }: { locale: Locale; message
     }
   }
 
-  return (
-    <section className="ui-card rounded-[2rem] p-5">
-      <header className="px-1">
-        <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">
-          {messages.adminBackup.eyebrow}
-        </p>
-        <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">
-          {messages.adminBackup.title}
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm text-[color:var(--text-secondary)]">
-          {messages.adminBackup.description}
-        </p>
-      </header>
+  const sectionClass = variant === "embedded" ? "ui-card-strong" : "ui-surface-muted";
+  const content = (
+    <>
+      {variant === "standalone" ? (
+        <header className="px-1">
+          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--text-tertiary)]">
+            {messages.adminBackup.eyebrow}
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-[color:var(--text-primary)]">
+            {messages.adminBackup.title}
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm text-[color:var(--text-secondary)]">
+            {messages.adminBackup.description}
+          </p>
+        </header>
+      ) : null}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <div className="ui-surface-muted rounded-2xl p-4">
+        <div className={`${sectionClass} rounded-2xl p-4`}>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.adminBackup.exportTitle}</p>
           <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.adminBackup.exportDescription}</p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -375,7 +386,7 @@ export function AdminBackupPanel({ locale, messages }: { locale: Locale; message
           </p>
         </div>
 
-        <div className="ui-surface-muted rounded-2xl p-4">
+        <div className={`${sectionClass} rounded-2xl p-4`}>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.adminBackup.importTitle}</p>
           <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.adminBackup.importDescription}</p>
           <input
@@ -420,7 +431,7 @@ export function AdminBackupPanel({ locale, messages }: { locale: Locale; message
       {error ? <p className="mt-4 text-sm text-[color:var(--danger-strong)]">{error}</p> : null}
 
       {summary ? (
-        <div className="ui-surface-muted mt-4 rounded-2xl p-4">
+        <div className={`${sectionClass} mt-4 rounded-2xl p-4`}>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.adminBackup.importSummary}</p>
           <p className="mt-2 text-sm text-[color:var(--text-secondary)]">
             {t(messages.adminBackup.summaryHeader, {
@@ -443,7 +454,7 @@ export function AdminBackupPanel({ locale, messages }: { locale: Locale; message
       ) : null}
 
       {busyKind === "conversations" ? (
-        <div className="ui-surface-muted mt-4 rounded-2xl p-4">
+        <div className={`${sectionClass} mt-4 rounded-2xl p-4`}>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">
             {messages.adminBackup.downloadFilesTitle}
           </p>
@@ -452,6 +463,16 @@ export function AdminBackupPanel({ locale, messages }: { locale: Locale; message
           </p>
         </div>
       ) : null}
+    </>
+  );
+
+  if (variant === "embedded") {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <section className="ui-card rounded-[2rem] p-5">
+      {content}
     </section>
   );
 }
