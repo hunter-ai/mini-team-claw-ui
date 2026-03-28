@@ -13,10 +13,8 @@ const startupEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  LAZYCAT_PICKER_PATH_PREFIX: z.string().default("/"),
   OPENCLAW_UPLOAD_DIR_CONTAINER: z.string().default("/shared/uploads"),
   OPENCLAW_UPLOAD_DIR_HOST: z.string().default("/srv/miniteamclaw/uploads"),
-  OPENCLAW_LAZYCAT_HOST_ROOT: z.string().default("/"),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
   OPENCLAW_VERBOSE_LEVEL: z.enum(["off", "full"]).default("off"),
   OPENCLAW_GATEWAY_URL: z.string().url().optional(),
@@ -38,10 +36,8 @@ export function getStartupEnv() {
       SESSION_SECRET: process.env.SESSION_SECRET,
       ADMIN_BOOTSTRAP_MODE: emptyToUndefined(process.env.ADMIN_BOOTSTRAP_MODE),
       ENABLE_LAZYCAT_FILE_PICKER: emptyToUndefined(process.env.ENABLE_LAZYCAT_FILE_PICKER),
-      LAZYCAT_PICKER_PATH_PREFIX: process.env.LAZYCAT_PICKER_PATH_PREFIX,
       OPENCLAW_UPLOAD_DIR_CONTAINER: process.env.OPENCLAW_UPLOAD_DIR_CONTAINER,
       OPENCLAW_UPLOAD_DIR_HOST: process.env.OPENCLAW_UPLOAD_DIR_HOST,
-      OPENCLAW_LAZYCAT_HOST_ROOT: process.env.OPENCLAW_LAZYCAT_HOST_ROOT,
       MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
       OPENCLAW_VERBOSE_LEVEL: process.env.OPENCLAW_VERBOSE_LEVEL,
       OPENCLAW_GATEWAY_URL: emptyToUndefined(process.env.OPENCLAW_GATEWAY_URL),
@@ -66,10 +62,8 @@ export function getStartupEnvDiagnostics() {
     sessionSecretConfigured: Boolean(env.SESSION_SECRET),
     adminBootstrapMode: env.ADMIN_BOOTSTRAP_MODE,
     lazycatFilePickerEnabled: env.ENABLE_LAZYCAT_FILE_PICKER,
-    lazycatPickerPathPrefix: env.LAZYCAT_PICKER_PATH_PREFIX,
     uploadDirContainer: env.OPENCLAW_UPLOAD_DIR_CONTAINER,
     uploadDirHost: env.OPENCLAW_UPLOAD_DIR_HOST,
-    lazycatHostRoot: env.OPENCLAW_LAZYCAT_HOST_ROOT,
     maxUploadBytes: env.MAX_UPLOAD_BYTES,
     verboseLevel: env.OPENCLAW_VERBOSE_LEVEL,
     fallbackGatewayUrlConfigured: Boolean(env.OPENCLAW_GATEWAY_URL),
@@ -80,4 +74,8 @@ export function getStartupEnvDiagnostics() {
     oidcClientSecretConfigured: Boolean(env.OIDC_CLIENT_SECRET),
     oidcBrandNameConfigured: Boolean(env.OIDC_BRAND_NAME),
   };
+}
+
+export function resetStartupEnvForTests() {
+  cachedStartupEnv = null;
 }

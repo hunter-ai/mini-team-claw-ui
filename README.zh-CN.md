@@ -170,12 +170,10 @@ docker compose -f docker-compose.prod.yml up -d
 | `SESSION_SECRET` | 是 | Session 签名密钥，长度至少 32 个字符。 |
 | `ADMIN_BOOTSTRAP_MODE` | 否 | 管理员初始化模式。开发建议使用 `seed`，生产首次安装建议使用 `ui`。默认值：`seed`。 |
 | `ENABLE_LAZYCAT_FILE_PICKER` | 否 | 设为 `true` 后，会在运行环境支持时于聊天页显示懒猫微服 NAS 文件选择入口。默认值：`false`。 |
-| `LAZYCAT_PICKER_PATH_PREFIX` | 否 | 从懒猫返回路径里裁掉的绝对前缀，再继续做宿主机路径映射。默认值：`/`。 |
 | `OPENCLAW_GATEWAY_URL` | 是 | OpenClaw gateway 的 WebSocket 地址。 |
 | `OPENCLAW_GATEWAY_TOKEN` | 否 | 如果你的 OpenClaw 部署要求 token，可在这里配置。 |
 | `OPENCLAW_UPLOAD_DIR_CONTAINER` | 否 | 本应用视角下的上传目录，默认 `/shared/uploads`。 |
 | `OPENCLAW_UPLOAD_DIR_HOST` | 否 | OpenClaw 可读取的宿主机路径，默认 `/srv/miniteamclaw/uploads`。 |
-| `OPENCLAW_LAZYCAT_HOST_ROOT` | 否 | 把懒猫路径映射成 OpenClaw 可读路径时使用的宿主机根目录。默认值：`/`。 |
 | `MAX_UPLOAD_BYTES` | 否 | 单个附件大小上限，默认 `1073741824`（1 GiB）。 |
 | `OPENCLAW_VERBOSE_LEVEL` | 否 | Gateway 日志详细程度，可选值：`off`、`full`。 |
 | `APP_URL` | 否 | 在需要绝对地址时使用的应用外部访问地址。 |
@@ -238,7 +236,7 @@ Prisma schema 目前包含以下核心实体：
 - 浏览器不会直接连接 OpenClaw。
 - Web 服务必须能够通过 WebSocket 访问 gateway。
 - 上传目录在应用侧和 OpenClaw 侧的映射必须一致。
-- 懒猫文件选择器会把 `filename` 映射到 `OPENCLAW_LAZYCAT_HOST_ROOT`，不会再把文件复制到上传目录。
+- 懒猫文件选择器选中文件后，服务端会按 `/lzcapp/documents/<用户名>/...` 读取源文件，复制到上传目录，再把上传目录里的宿主机路径传给 OpenClaw。
 - 仓库内置的 `docker-compose.yml` 默认使用宿主机目录 `/home/openclaw/miniteamclaw/uploads`。
 - 仓库内置的 `docker-compose.prod.yml` 默认拉取 `ihunterdev/miniteamclawui:0.0.2`，并优先读取 `.env.prod` 里的环境变量。
 - Docker 模式下，`OPENCLAW_GATEWAY_URL` 通常会配置为 `ws://host.docker.internal:18789`。

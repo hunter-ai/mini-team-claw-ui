@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { AttachmentSource, SessionStatus } from "@prisma/client";
+import { SessionStatus } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { getStartupEnv } from "@/lib/env";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { lazycatPickerSubmitDetailSchema } from "@/lib/lazycat-attachments";
+import { createLazycatAttachments } from "@/lib/lazycat-attachments-persistence";
 import { mapLazycatPickerDetailToAttachments } from "@/lib/lazycat-attachments.server";
-import { prisma } from "@/lib/prisma";
 import { getChatSessionForUser } from "@/lib/session-service";
 
 export const runtime = "nodejs";
@@ -38,37 +37,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const env = getStartupEnv();
     const mappedAttachments = mapLazycatPickerDetailToAttachments({
       detail: payload.data.pickerDetail,
-      pathPrefix: env.LAZYCAT_PICKER_PATH_PREFIX,
-      hostRoot: env.OPENCLAW_LAZYCAT_HOST_ROOT,
+      username: user.username,
     });
 
-    const attachments = await prisma.$transaction(
-      mappedAttachments.map((attachment) =>
-        prisma.attachment.create({
-          data: {
-            userId: user.id,
-            sessionId: session.id,
-            source: AttachmentSource.LAZYCAT_PATH,
-            originalName: attachment.originalName,
-            mime: attachment.mime,
-            size: attachment.size,
-            sourcePath: attachment.sourcePath,
-            hostPath: attachment.hostPath,
-          },
-        }),
-      ),
-    );
+    const attachments = await createLazycatAttachments({
+      userId: user.id,
+      sessionId: session.id,
+      attachments: mappedAttachments,
+    });
 
     return NextResponse.json({
-      attachments: attachments.map((attachment) => ({
-        id: attachment.id,
-        originalName: attachment.originalName,
-        mime: attachment.mime,
-        size: attachment.size,
-      })),
+      attachments,
     });
   } catch (error) {
     return NextResponse.json(

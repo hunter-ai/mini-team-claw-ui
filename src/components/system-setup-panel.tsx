@@ -233,18 +233,6 @@ export function SystemSetupPanel({
             </p>
           </div>
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
-            <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.lazycatPathPrefix}</p>
-            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
-              {status.envDiagnostics.lazycatPickerPathPrefix}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
-            <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.lazycatHostRoot}</p>
-            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
-              {status.envDiagnostics.lazycatHostRoot}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.maxUploadBytes}</p>
             <p className="ui-field-note mt-1 text-[color:var(--text-secondary)]">
               {String(status.envDiagnostics.maxUploadBytes)}

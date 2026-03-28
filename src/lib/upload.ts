@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getStartupEnv } from "@/lib/env";
 
@@ -26,31 +26,63 @@ export function ensureMimeAllowed(mime: string) {
   return allowedMimeTypes.has(mime);
 }
 
-export async function persistUpload(userId: string, sessionId: string, file: File) {
+function ensureWithinMaxUploadBytes(size: number) {
   const env = getStartupEnv();
-  if (!ensureMimeAllowed(file.type)) {
-    throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
-  }
-
-  if (file.size > env.MAX_UPLOAD_BYTES) {
+  if (size > env.MAX_UPLOAD_BYTES) {
     throw new Error(`File exceeds MAX_UPLOAD_BYTES (${env.MAX_UPLOAD_BYTES})`);
   }
+}
 
+export type PersistedUpload = {
+  containerPath: string;
+  hostPath: string;
+  size: number;
+  sha256: string;
+};
+
+function buildUploadPaths(userId: string, sessionId: string, fileName: string) {
+  const env = getStartupEnv();
   const now = new Date();
   const segment = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const safeName = sanitizeName(file.name || "attachment");
+  const safeName = sanitizeName(fileName || "attachment");
   const filename = `${randomUUID()}_${safeName}`;
   const relativePath = path.join(userId, segment, sessionId, filename);
-  const containerPath = path.join(env.OPENCLAW_UPLOAD_DIR_CONTAINER, relativePath);
-  const hostPath = path.join(env.OPENCLAW_UPLOAD_DIR_HOST, relativePath);
+  return {
+    containerPath: path.join(env.OPENCLAW_UPLOAD_DIR_CONTAINER, relativePath),
+    hostPath: path.join(env.OPENCLAW_UPLOAD_DIR_HOST, relativePath),
+  };
+}
+
+async function persistUploadBuffer(userId: string, sessionId: string, fileName: string, buffer: Buffer): Promise<PersistedUpload> {
+  const { containerPath, hostPath } = buildUploadPaths(userId, sessionId, fileName);
 
   await mkdir(path.dirname(containerPath), { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(containerPath, buffer);
 
   return {
     containerPath,
     hostPath,
+    size: buffer.byteLength,
     sha256: createHash("sha256").update(buffer).digest("hex"),
   };
+}
+
+export async function persistUpload(userId: string, sessionId: string, file: File) {
+  if (!ensureMimeAllowed(file.type)) {
+    throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
+  }
+
+  ensureWithinMaxUploadBytes(file.size);
+
+  return persistUploadBuffer(userId, sessionId, file.name, Buffer.from(await file.arrayBuffer()));
+}
+
+export async function persistUploadFromPath(userId: string, sessionId: string, sourcePath: string, fileName: string) {
+  const buffer = await readFile(sourcePath);
+  ensureWithinMaxUploadBytes(buffer.byteLength);
+  return persistUploadBuffer(userId, sessionId, fileName, buffer);
+}
+
+export async function removePersistedUpload(upload: Pick<PersistedUpload, "containerPath">) {
+  await rm(upload.containerPath, { force: true });
 }
