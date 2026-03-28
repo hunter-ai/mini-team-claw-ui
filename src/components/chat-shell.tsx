@@ -1624,6 +1624,69 @@ function formatUsagePercent(value: number) {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
+function ComposerContextUsagePanel({
+  messages,
+  loading,
+  usagePercent,
+  usageRatio,
+  used,
+  total,
+  remaining,
+}: {
+  messages: Dictionary;
+  loading: boolean;
+  usagePercent: string;
+  usageRatio: number;
+  used: number;
+  total: number;
+  remaining: number;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">
+          {messages.chat.contextSummaryLabel}
+        </p>
+        <span className="text-[11px] font-semibold text-[color:var(--text-secondary)]">
+          {loading ? "..." : usagePercent}
+        </span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)]">
+        <div
+          className={`h-full rounded-full transition-[width,background-color] duration-300 ${
+            usageRatio >= 1
+              ? "bg-red-500"
+              : usageRatio >= 0.85
+                ? "bg-amber-500"
+                : "bg-[color:var(--text-primary)]"
+          } ${loading ? "animate-pulse opacity-50" : ""}`}
+          style={{ width: `${Math.max(4, Math.round((loading ? 0.12 : usageRatio) * 100))}%` }}
+        />
+      </div>
+      <div className="mt-2.5 space-y-1.5 text-[11px] text-[color:var(--text-secondary)]">
+        <div className="flex items-center justify-between gap-3">
+          <span>{messages.chat.contextUsedLabel}</span>
+          <span className="font-medium text-[color:var(--text-primary)]">
+            {loading ? "..." : formatCompactTokenCount(used)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span>{messages.chat.contextTotalLabel}</span>
+          <span className="font-medium text-[color:var(--text-primary)]">
+            {loading ? "..." : formatCompactTokenCount(total)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span>{messages.chat.contextRemainingLabel}</span>
+          <span className="font-medium text-[color:var(--text-primary)]">
+            {loading ? "..." : formatCompactTokenCount(remaining)}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ComposerContextUsage({
   usage,
   loading,
@@ -1635,6 +1698,8 @@ function ComposerContextUsage({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const desktopPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobilePanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -1647,7 +1712,11 @@ function ComposerContextUsage({
         return;
       }
 
-      if (!containerRef.current?.contains(target)) {
+      const isInsideContainer = containerRef.current?.contains(target) ?? false;
+      const isInsideDesktopPanel = desktopPanelRef.current?.contains(target) ?? false;
+      const isInsideMobilePanel = mobilePanelRef.current?.contains(target) ?? false;
+
+      if (!isInsideContainer && !isInsideDesktopPanel && !isInsideMobilePanel) {
         setOpen(false);
       }
     };
@@ -1685,7 +1754,8 @@ function ComposerContextUsage({
   const total = usage?.totalTokens ?? 0;
   const remaining = usage?.remainingTokens ?? 0;
   const usagePercent = formatUsagePercent(usageRatio);
-  const title = loading && !usage
+  const isLoadingState = loading && !usage;
+  const title = isLoadingState
     ? messages.chat.contextLoading
     : `${messages.chat.contextSummaryLabel} ${usagePercent}`;
   const handleHoverOpen = () => {
@@ -1719,13 +1789,14 @@ function ComposerContextUsage({
         className="ui-icon-button inline-flex shrink-0 text-[color:var(--text-secondary)] outline-none transition hover:text-[color:var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[color:var(--border-strong)]"
         aria-label={title}
         aria-expanded={open}
+        aria-haspopup="dialog"
         onFocus={() => setOpen(true)}
         onClick={() => setOpen((current) => !current)}
       >
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"
-          className={`size-6 -rotate-90 sm:size-6 ${loading && !usage ? "animate-pulse opacity-60" : ""}`}
+          className={`size-6 -rotate-90 sm:size-6 ${isLoadingState ? "animate-pulse opacity-60" : ""}`}
         >
           <circle
             cx="12"
@@ -1749,52 +1820,61 @@ function ComposerContextUsage({
         </svg>
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-56 max-w-[calc(100vw-2rem)] rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] p-3 text-left shadow-[var(--shadow-panel)] backdrop-blur">
-          <span
-            aria-hidden="true"
-            className="absolute bottom-[-0.35rem] left-3 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">
-              {messages.chat.contextSummaryLabel}
-            </p>
-            <span className="text-[11px] font-semibold text-[color:var(--text-secondary)]">
-              {loading && !usage ? "..." : usagePercent}
-            </span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)]">
-            <div
-              className={`h-full rounded-full transition-[width,background-color] duration-300 ${
-                usage && usageRatio >= 1
-                  ? "bg-red-500"
-                  : usage && usageRatio >= 0.85
-                    ? "bg-amber-500"
-                    : "bg-[color:var(--text-primary)]"
-              } ${loading && !usage ? "animate-pulse opacity-50" : ""}`}
-              style={{ width: `${Math.max(4, Math.round((loading && !usage ? 0.12 : usageRatio) * 100))}%` }}
+        <>
+          <div
+            ref={desktopPanelRef}
+            className="absolute bottom-full left-0 z-30 mb-2 hidden w-56 max-w-[calc(100vw-2rem)] rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] p-3 text-left shadow-[var(--shadow-panel)] backdrop-blur sm:block"
+          >
+            <span
+              aria-hidden="true"
+              className="absolute bottom-[-0.35rem] left-3 size-3 rotate-45 border-r border-b border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)]"
+            />
+            <ComposerContextUsagePanel
+              messages={messages}
+              loading={isLoadingState}
+              usagePercent={usagePercent}
+              usageRatio={usageRatio}
+              used={used}
+              total={total}
+              remaining={remaining}
             />
           </div>
-          <div className="mt-2.5 space-y-1.5 text-[11px] text-[color:var(--text-secondary)]">
-            <div className="flex items-center justify-between gap-3">
-              <span>{messages.chat.contextUsedLabel}</span>
-              <span className="font-medium text-[color:var(--text-primary)]">
-                {loading && !usage ? "..." : formatCompactTokenCount(used)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span>{messages.chat.contextTotalLabel}</span>
-              <span className="font-medium text-[color:var(--text-primary)]">
-                {loading && !usage ? "..." : formatCompactTokenCount(total)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span>{messages.chat.contextRemainingLabel}</span>
-              <span className="font-medium text-[color:var(--text-primary)]">
-                {loading && !usage ? "..." : formatCompactTokenCount(remaining)}
-              </span>
+          <button
+            type="button"
+            aria-label={messages.common.cancel}
+            onClick={() => setOpen(false)}
+            className="ui-overlay fixed inset-0 z-20 sm:hidden"
+          />
+          <div
+            ref={mobilePanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={messages.chat.contextSummaryLabel}
+            className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden"
+          >
+            <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.contextSummaryLabel}</p>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="ui-button-secondary ui-button-chip font-medium"
+                >
+                  {messages.common.cancel}
+                </button>
+              </div>
+              <ComposerContextUsagePanel
+                messages={messages}
+                loading={isLoadingState}
+                usagePercent={usagePercent}
+                usageRatio={usageRatio}
+                used={used}
+                total={total}
+                remaining={remaining}
+              />
             </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
