@@ -2412,6 +2412,7 @@ export function ChatShell({
   const pendingComposerSelectionRef = useRef<ComposerSelection | null>(null);
   const loadSessionRef = useRef<(sessionId: string, clearError?: boolean) => Promise<void>>(async () => {});
   const skillsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const mobileSkillsSheetRef = useRef<HTMLDivElement | null>(null);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -3414,7 +3415,7 @@ export function ChatShell({
         return;
       }
 
-      if (skillsPopoverRef.current?.contains(target)) {
+      if (skillsPopoverRef.current?.contains(target) || mobileSkillsSheetRef.current?.contains(target)) {
         return;
       }
 
@@ -4597,7 +4598,10 @@ export function ChatShell({
                 onClick={() => setSkillsOpen(false)}
                 className="ui-overlay fixed inset-0 z-20 sm:hidden"
               />
-              <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden">
+              <div
+                ref={mobileSkillsSheetRef}
+                className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-30 sm:hidden"
+              >
                 <div className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-[color:var(--text-primary)]">{messages.chat.skills}</p>
