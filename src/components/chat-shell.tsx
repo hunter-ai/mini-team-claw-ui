@@ -2455,6 +2455,7 @@ export function ChatShell({
   const [composerSelection, setComposerSelection] = useState<ComposerSelection>({ start: 0, end: 0 });
   const [dismissedSlashPanelKey, setDismissedSlashPanelKey] = useState<string | null>(null);
   const [highlightedSlashIndex, setHighlightedSlashIndex] = useState(0);
+  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
   const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
   const [dockedComposerHeight, setDockedComposerHeight] = useState(0);
   const [lazycatFilePickerAvailable, setLazycatFilePickerAvailable] = useState(false);
@@ -2684,12 +2685,13 @@ export function ChatShell({
   const activeSessionLoaded = activeSessionId ? (loadedSessionIds[activeSessionId] ?? false) : true;
   const activeSessionHasRenderableContent =
     Boolean(pairing) || renderableMessages.length > 0 || Boolean(activeRun);
-  const isCenteredEmptyState =
+  const isEmptyState =
     (!activeSessionId || activeSessionLoaded) &&
     !pairing &&
     !activeRun &&
     sessionMessages.length === 0 &&
     !activeSessionReadOnly;
+  const shouldCenterEmptyState = isEmptyState && !isPhoneViewport;
   const composerMode: ComposerMode = activeSessionId
     ? "active-session"
     : sessions.length === 0
@@ -2753,7 +2755,7 @@ export function ChatShell({
     activeSessionId,
     activeSessionReadOnly,
     error,
-    isCenteredEmptyState,
+    shouldCenterEmptyState,
     loading,
     pendingAttachments.length,
     selectedSkills.length,
@@ -3840,6 +3842,24 @@ export function ChatShell({
       setSkillsOpen(false);
     }
   }, [showSlashSuggestions, skillsOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const updatePhoneViewport = () => {
+      setIsPhoneViewport(mediaQuery.matches);
+    };
+
+    updatePhoneViewport();
+    mediaQuery.addEventListener("change", updatePhoneViewport);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updatePhoneViewport);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -5087,7 +5107,7 @@ export function ChatShell({
               </div>
             ) : null}
 
-            {isCenteredEmptyState ? (
+            {shouldCenterEmptyState ? (
               <div className="flex min-h-full flex-1 items-center">
                 {renderComposer({
                   placement: "centered",
@@ -5139,7 +5159,12 @@ export function ChatShell({
           </button>
         </div>
 
-        {!isCenteredEmptyState ? renderComposer({ placement: "docked", mode: "active-session" }) : null}
+        {!shouldCenterEmptyState
+          ? renderComposer({
+              placement: "docked",
+              mode: isEmptyState ? composerMode : "active-session",
+            })
+          : null}
       </section>
 
       {renameTargetSession ? (
