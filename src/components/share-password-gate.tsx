@@ -19,13 +19,13 @@ export function SharePasswordGate({
 
   return (
     <div className="mx-auto flex min-h-[70vh] w-full max-w-md items-center px-4">
-      <div className="ui-card w-full rounded-[1rem] p-5">
+      <div className="ui-card w-full rounded-[1.4rem] p-5 sm:rounded-[1rem] sm:p-5">
         <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{messages.share.eyebrow}</p>
         <h1 className="mt-2 text-lg font-semibold text-[color:var(--text-primary)]">{messages.share.passwordTitle}</h1>
         <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.share.passwordDescription}</p>
 
         <form
-          className="mt-4"
+          className="ui-form-stack mt-5"
           onSubmit={(event) => {
             event.preventDefault();
             setError(null);
@@ -65,14 +65,14 @@ export function SharePasswordGate({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={isPending}
-            className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
+            className="ui-input"
             placeholder={messages.share.passwordPlaceholder}
           />
-          {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
+          {error ? <p className="ui-field-note text-red-600">{error}</p> : null}
           <button
             type="submit"
             disabled={isPending || !password.trim()}
-            className="ui-button-primary mt-4 w-full rounded-full px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed"
+            className="ui-button-primary w-full font-semibold disabled:cursor-not-allowed"
           >
             {isPending ? messages.share.passwordSubmitting : messages.share.passwordSubmit}
           </button>

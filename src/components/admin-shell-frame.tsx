@@ -50,7 +50,7 @@ export function AdminShellFrame({
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
-            className="ui-button-secondary inline-flex size-9 shrink-0 items-center justify-center rounded-full p-0 lg:hidden"
+            className="ui-button-secondary ui-icon-button !inline-flex shrink-0 lg:!hidden"
             aria-label={messages.admin.closeSidebarMenu}
             title={messages.admin.closeSidebarMenu}
           >
@@ -75,7 +75,7 @@ export function AdminShellFrame({
             <Link
               href={localizeHref(locale, "/chat")}
               onClick={() => setDrawerOpen(false)}
-              className="ui-button-secondary rounded-full px-3 py-2 text-sm font-medium"
+              className="ui-button-secondary ui-button-chip font-medium"
             >
               {messages.nav.backToChat}
             </Link>
@@ -86,9 +86,9 @@ export function AdminShellFrame({
   );
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-[96rem] px-4 py-4 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-screen w-full max-w-[96rem] px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
       <div className="space-y-4 lg:grid lg:grid-cols-[18.5rem_minmax(0,1fr)] lg:gap-4 lg:space-y-0">
-        <div className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.78)] px-4 py-3 shadow-[var(--shadow-soft)] lg:hidden">
+        <div className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.78)] px-4 py-3.5 shadow-[var(--shadow-soft)] lg:hidden">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.26em] text-[color:var(--text-tertiary)]">
               {messages.admin.eyebrow}
@@ -100,7 +100,7 @@ export function AdminShellFrame({
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="ui-button-secondary inline-flex size-9 shrink-0 items-center justify-center rounded-full p-0"
+            className="ui-button-secondary ui-icon-button shrink-0"
             aria-label={messages.admin.openSidebarMenu}
             title={messages.admin.openSidebarMenu}
           >

@@ -48,8 +48,8 @@ export function OidcBindForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="space-y-2">
+    <form onSubmit={handleSubmit} className="ui-form-stack">
+      <div className="space-y-2.5">
         <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="bind-username">
           {messages.login.username}
         </label>
@@ -57,13 +57,13 @@ export function OidcBindForm({
           id="bind-username"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
-          className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
+          className="ui-input ring-0"
           placeholder={messages.login.usernamePlaceholder}
           autoComplete="username"
           required
         />
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="bind-password">
           {messages.login.password}
         </label>
@@ -72,17 +72,17 @@ export function OidcBindForm({
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
+          className="ui-input ring-0"
           placeholder={messages.login.passwordPlaceholder}
           autoComplete="current-password"
           required
         />
       </div>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="ui-field-note text-red-600">{error}</p> : null}
       <button
         type="submit"
         disabled={loading}
-        className="ui-button-primary w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
+        className="ui-button-primary w-full font-semibold disabled:cursor-not-allowed"
       >
         {loading ? messages.login.binding : messages.login.bindSubmit}
       </button>

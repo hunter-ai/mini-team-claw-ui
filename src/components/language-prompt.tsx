@@ -44,14 +44,14 @@ export function LanguagePrompt({ messages }: { messages: Dictionary }) {
   }
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-[1rem] border border-[color:var(--border-strong)] bg-[rgba(255,255,255,0.96)] p-4 shadow-[var(--shadow-panel)]">
+    <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-sm rounded-[1.15rem] border border-[color:var(--border-strong)] bg-[rgba(255,255,255,0.96)] p-4 shadow-[var(--shadow-panel)]">
       <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.localePrompt.title}</p>
-      <p className="mt-1.5 text-xs leading-6 text-[color:var(--text-secondary)]">{messages.localePrompt.description}</p>
+      <p className="ui-field-note mt-1.5 text-[color:var(--text-secondary)]">{messages.localePrompt.description}</p>
       <div className="mt-3 flex items-center justify-end gap-2">
-        <button type="button" onClick={dismiss} className="ui-button-secondary rounded-full px-3 py-1.5 text-xs">
+        <button type="button" onClick={dismiss} className="ui-button-secondary ui-button-chip font-medium">
           {messages.localePrompt.dismiss}
         </button>
-        <button type="button" onClick={switchToChinese} className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold">
+        <button type="button" onClick={switchToChinese} className="ui-button-primary ui-button-chip font-semibold">
           {messages.localePrompt.confirm}
         </button>
       </div>

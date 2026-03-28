@@ -33,18 +33,23 @@ export function LanguageSwitcher({
   }
 
   return (
-    <div className={className ?? "inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.72)] p-1 text-[11px]"}>
+    <div
+      className={
+        className ??
+        "inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.72)] p-1"
+      }
+    >
       <button
         type="button"
         onClick={() => switchLocale("en")}
-        className={`rounded-full px-2.5 py-1 ${locale === "en" ? "ui-button-secondary" : "text-[color:var(--text-secondary)]"}`}
+        className={`ui-button-chip rounded-full ${locale === "en" ? "ui-button-secondary" : "text-[color:var(--text-secondary)]"}`}
       >
         EN
       </button>
       <button
         type="button"
         onClick={() => switchLocale("zh")}
-        className={`rounded-full px-2.5 py-1 ${locale === "zh" ? "ui-button-secondary" : "text-[color:var(--text-secondary)]"}`}
+        className={`ui-button-chip rounded-full ${locale === "zh" ? "ui-button-secondary" : "text-[color:var(--text-secondary)]"}`}
       >
         中文
       </button>

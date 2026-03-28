@@ -1201,7 +1201,7 @@ function SlashCommandList({
 
   if (!suggestions.length && !loadingSkills && !skillsError) {
     return (
-      <div className="rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[11px] text-[color:var(--text-secondary)]">
+      <div className="ui-field-note rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-secondary)]">
         {query ? messages.chat.slashNoMatches : messages.chat.slashStartTyping}
       </div>
     );
@@ -1210,10 +1210,10 @@ function SlashCommandList({
   return (
     <div ref={listRef} className="space-y-2">
       {skillsError ? (
-        <p className="text-[11px] leading-5 text-amber-700">{skillsError}</p>
+        <p className="ui-field-note text-amber-700">{skillsError}</p>
       ) : null}
       {loadingSkills ? (
-        <p className="text-[11px] text-[color:var(--text-secondary)]">{messages.chat.slashLoading}</p>
+        <p className="ui-field-note text-[color:var(--text-secondary)]">{messages.chat.slashLoading}</p>
       ) : null}
       {suggestions.length ? (
         <div className="space-y-2">
@@ -1283,7 +1283,7 @@ function CheckIcon({ className = "size-3.5" }: { className?: string }) {
 }
 
 const COPY_ICON_CLASS_NAME = "size-4.5";
-const COPY_ICON_BUTTON_CLASS_NAME = "justify-center rounded-full p-1.5 hover:bg-[rgba(107,114,128,0.16)]";
+const COPY_ICON_BUTTON_CLASS_NAME = "ui-icon-button justify-center hover:bg-[rgba(107,114,128,0.16)]";
 
 async function copyText(text: string) {
   if (
@@ -1386,7 +1386,7 @@ function CopyButton({
       onClick={handleCopy}
       aria-label={copied ? successLabel : ariaLabel}
       disabled={!text}
-      className={`inline-flex items-center gap-1 border-0 bg-transparent p-0 text-[10px] font-medium transition-colors ${
+      className={`inline-flex items-center gap-1 border-0 bg-transparent p-0 text-[11px] font-medium transition-colors ${
         copied
           ? "text-[#155e75]"
           : "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]"
@@ -1716,7 +1716,7 @@ function ComposerContextUsage({
     >
       <button
         type="button"
-        className="inline-flex shrink-0 items-center justify-center rounded-full p-0.5 text-[color:var(--text-secondary)] outline-none transition hover:text-[color:var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[color:var(--border-strong)]"
+        className="ui-icon-button inline-flex shrink-0 text-[color:var(--text-secondary)] outline-none transition hover:text-[color:var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[color:var(--border-strong)]"
         aria-label={title}
         aria-expanded={open}
         onFocus={() => setOpen(true)}
@@ -2040,8 +2040,8 @@ const ChatSidebar = memo(function ChatSidebar({
           }
         }}
         title={collapsed ? session.title : undefined}
-        className={`w-full rounded-[0.75rem] border text-left transition ${
-          collapsed ? "px-1.5 py-2 lg:min-h-10" : "px-2 py-2"
+      className={`w-full rounded-[0.9rem] border text-left transition ${
+          collapsed ? "px-2 py-2.5 lg:min-h-10" : "min-h-[var(--touch-target-min)] px-3 py-2.5"
         } ${
           isActive
             ? "border-[color:var(--border-strong)] bg-[color:var(--surface-muted)]"
@@ -2056,7 +2056,7 @@ const ChatSidebar = memo(function ChatSidebar({
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-xs font-medium text-[color:var(--text-primary)]">{session.title}</p>
+            <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{session.title}</p>
             {isBusy ? (
               <span className="ui-badge shrink-0 rounded-full px-2 py-0.5 text-[10px]">
                 {messages.chat.live}
@@ -2086,13 +2086,13 @@ const ChatSidebar = memo(function ChatSidebar({
     <button
       type="button"
       onClick={onToggle}
-      className="flex w-full items-center justify-between rounded-[0.65rem] px-1 py-1 text-left transition hover:bg-[color:var(--surface-subtle)]"
+      className="flex min-h-[2.25rem] w-full items-center justify-between rounded-[0.75rem] px-2 py-1.5 text-left transition hover:bg-[color:var(--surface-subtle)]"
       aria-expanded={expanded}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-quaternary)]">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-quaternary)]">
         {title}
       </span>
-      <span className="flex items-center gap-1 text-[10px] text-[color:var(--text-quaternary)]">
+      <span className="flex items-center gap-1 text-[11px] text-[color:var(--text-quaternary)]">
         <span>{count}</span>
         <span aria-hidden="true">{expanded ? "−" : "+"}</span>
       </span>
@@ -2135,17 +2135,17 @@ const ChatSidebar = memo(function ChatSidebar({
 
   return (
     <aside
-      className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.96)] shadow-[var(--shadow-panel)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
+          className={`fixed inset-y-1.5 left-1.5 z-30 flex w-[calc(100vw-0.75rem)] max-w-[20rem] shrink-0 flex-col overflow-hidden rounded-[1.1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.96)] shadow-[var(--shadow-panel)] transition-[width,transform] duration-300 lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:rounded-[0.9rem] ${
         drawerOpen ? "translate-x-0" : "-translate-x-[108%] lg:translate-x-0"
       } ${isSidebarCollapsed ? "lg:w-[4.25rem]" : "lg:w-[14.5rem] xl:w-[15.25rem]"}`}
     >
-      <div className="border-b border-[color:var(--border-subtle)] px-2 py-1.5 sm:px-2.5">
+      <div className="border-b border-[color:var(--border-subtle)] px-3 py-2.5 sm:px-2.5 sm:py-1.5">
         {isSidebarCollapsed ? (
           <div className="hidden justify-center lg:flex">
             <button
               type="button"
               onClick={onExpandSidebar}
-              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0"
+              className="ui-button-secondary ui-icon-button shrink-0"
               aria-label={messages.nav.expandSidebar}
               title={messages.nav.expandSidebar}
             >
@@ -2156,14 +2156,14 @@ const ChatSidebar = memo(function ChatSidebar({
           <>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-medium text-[color:var(--text-primary)]">{user.openclawAgentId}</p>
-                <p className="mt-0.5 truncate text-[10px] text-[color:var(--text-quaternary)]">{user.username}</p>
+                <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{user.openclawAgentId}</p>
+                <p className="mt-0.5 truncate text-[11px] text-[color:var(--text-quaternary)]">{user.username}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onCollapseSidebar}
-                  className="ui-button-secondary hidden size-8 shrink-0 items-center justify-center rounded-full p-0 lg:inline-flex"
+                  className="ui-button-secondary ui-icon-button !hidden shrink-0 lg:!inline-flex"
                   aria-label={messages.nav.collapseSidebar}
                   title={messages.nav.collapseSidebar}
                 >
@@ -2172,7 +2172,7 @@ const ChatSidebar = memo(function ChatSidebar({
                 <button
                   type="button"
                   onClick={onCloseDrawer}
-                  className="ui-button-secondary inline-flex size-8 items-center justify-center rounded-full lg:hidden"
+                  className="ui-button-secondary ui-icon-button !inline-flex lg:!hidden"
                   aria-label={messages.nav.closeDrawer}
                   title={messages.nav.closeDrawer}
                 >
@@ -2184,7 +2184,7 @@ const ChatSidebar = memo(function ChatSidebar({
               <button
                 type="button"
                 onClick={onCreateSession}
-                className="ui-button-primary min-w-0 flex-1 rounded-[0.7rem] px-2.5 py-1.5 text-[11px] font-semibold"
+                className="ui-button-primary min-w-0 flex-1 font-semibold"
               >
                 {messages.nav.new}
               </button>
@@ -2236,7 +2236,7 @@ const ChatSidebar = memo(function ChatSidebar({
           )}
           <div ref={loadMoreSentinelRef} className="h-2 w-full" />
           {isSidebarCollapsed ? null : (
-            <div className="px-1 py-1 text-center text-[10px] text-[color:var(--text-quaternary)]">
+            <div className="px-1 py-1.5 text-center text-[11px] text-[color:var(--text-quaternary)]">
               {loadingMore ? (
                 <span>{messages.chat.loadingMore}</span>
               ) : loadMoreError ? (
@@ -2254,12 +2254,12 @@ const ChatSidebar = memo(function ChatSidebar({
       </div>
 
       {isSidebarCollapsed ? null : (
-        <div className="border-t border-[color:var(--border-subtle)] px-2 py-1.5 sm:px-2.5">
+        <div className="border-t border-[color:var(--border-subtle)] px-3 py-2.5 sm:px-2.5 sm:py-1.5">
           <div className="grid grid-cols-2 gap-1.5">
             {user.role === "ADMIN" ? (
               <Link
                 href={localizeHref(locale, "/admin")}
-                className="ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium"
+                className="ui-button-secondary ui-button-chip inline-flex font-medium"
               >
                 {messages.nav.admin}
               </Link>
@@ -2269,7 +2269,7 @@ const ChatSidebar = memo(function ChatSidebar({
             <LogoutButton
               locale={locale}
               messages={messages}
-              className={`ui-button-secondary inline-flex h-8 items-center justify-center rounded-[0.7rem] px-2.5 text-[11px] font-medium ${
+              className={`ui-button-secondary ui-button-chip inline-flex font-medium ${
                 user.role === "ADMIN" ? "" : "col-span-2"
               }`}
             />
@@ -4552,10 +4552,10 @@ export function ChatShell({
 
     const shellClassName = isCentered
       ? "mx-auto flex w-full max-w-[min(46rem,100%)] flex-col justify-center py-8 sm:py-12"
-      : "shrink-0 border-t border-[color:var(--border-subtle)] bg-[rgba(248,250,252,0.78)] px-1 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2";
+      : "shrink-0 border-t border-[color:var(--border-subtle)] bg-[rgba(248,250,252,0.78)] px-2 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-2 sm:py-2";
     const contentClassName = isCentered
-      ? "rounded-[1rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-2 py-2 shadow-[var(--shadow-panel)] sm:px-3 sm:py-3"
-      : "mx-auto w-full max-w-none rounded-[0.85rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-1.5 py-1.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2";
+      ? "rounded-[1rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-3 py-3 shadow-[var(--shadow-panel)] sm:px-3 sm:py-3"
+      : "mx-auto w-full max-w-none rounded-[1rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-3 py-2.5 shadow-[var(--shadow-soft)] sm:px-2 sm:py-2";
 
     return (
       <div
@@ -4604,7 +4604,7 @@ export function ChatShell({
                     <button
                       type="button"
                       onClick={() => setSkillsOpen(false)}
-                      className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
+                      className="ui-button-secondary ui-button-chip font-medium"
                     >
                       {messages.common.cancel}
                     </button>
@@ -4620,7 +4620,7 @@ export function ChatShell({
                       <button
                         type="button"
                         onClick={handleRetryLoadSkills}
-                        className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                        className="ui-button-secondary ui-button-chip mt-2 font-medium"
                       >
                         {messages.chat.retryLoadSkills}
                       </button>
@@ -4668,7 +4668,7 @@ export function ChatShell({
                     <button
                       type="button"
                       onClick={() => setDismissedSlashPanelKey(activeSlashMatch?.dismissKey ?? null)}
-                      className="ui-button-secondary rounded-full px-2.5 py-1 text-[10px]"
+                      className="ui-button-secondary ui-button-chip font-medium"
                     >
                       {messages.common.cancel}
                     </button>
@@ -4698,15 +4698,15 @@ export function ChatShell({
             className="relative px-0.5 py-0.5"
           >
             {activeSessionReadOnly ? (
-              <p className="mb-2 rounded-[0.7rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-2.5 py-2 text-[11px] text-[color:var(--text-secondary)] sm:text-xs">
+              <p className="ui-field-note mb-2 rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-secondary)]">
                 {messages.chat.archivedReadOnlyNotice}
               </p>
             ) : null}
             {showSlashSuggestions && !isCreateSessionOnly ? (
               <div className="absolute inset-x-0 bottom-full z-20 mb-2 hidden sm:block">
-                <div className="rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-2.5 py-2 shadow-[var(--shadow-panel)] backdrop-blur">
+                <div className="rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.98)] px-3 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{messages.chat.slashMenuTitle}</p>
+                    <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.chat.slashMenuTitle}</p>
                     <p className="text-[10px] text-[color:var(--text-tertiary)]">{messages.chat.slashKeyboardHint}</p>
                   </div>
                   <div className="max-h-64 overflow-y-auto pr-0.5">
@@ -4757,17 +4757,17 @@ export function ChatShell({
                   ? messages.chat.archivedMessagePlaceholder
                   : `${messages.chat.messagePlaceholder} ${messages.chat.composerUsageHint}`
               }
-              className={`w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[15px] leading-5 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:text-sm sm:leading-6 ${
-                isCentered ? "min-h-[4.5rem] sm:min-h-[5rem]" : "min-h-[3rem] sm:min-h-[3.25rem]"
+              className={`w-full resize-none overflow-y-hidden bg-transparent px-0 py-0 text-[16px] leading-6 text-[color:var(--text-primary)] outline-none placeholder:text-[color:var(--text-quaternary)] sm:text-[14px] sm:leading-6 ${
+                isCentered ? "min-h-[5.5rem] sm:min-h-[5rem]" : "min-h-[3.75rem] sm:min-h-[3.25rem]"
               } ${isCreateSessionOnly ? "cursor-default opacity-60" : ""}`}
               disabled={composerDisabled || loading}
             />
             {!showSlashSuggestions && showSlashHint && activeSlashCommand ? (
               <SlashCommandHint command={activeSlashCommand} messages={messages} />
             ) : null}
-            <div className="mt-1.5 flex items-center justify-between gap-1.5 border-t border-[color:var(--border-subtle)] pt-1.5">
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-[color:var(--border-subtle)] pt-2">
               <div className="min-w-0 flex flex-wrap items-center gap-1">
-                <label className="ui-button-secondary inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]">
+                <label className="ui-button-secondary ui-button-chip inline-flex cursor-pointer items-center gap-1.5">
                   <input
                     type="file"
                     className="hidden"
@@ -4785,7 +4785,7 @@ export function ChatShell({
                     type="button"
                     onClick={() => setLazycatPickerOpen(true)}
                     disabled={composerDisabled || isBootstrap || uploading || loading}
-                    className="ui-button-secondary inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] sm:px-2.5 sm:text-[11px]"
+                    className="ui-button-secondary ui-button-chip inline-flex items-center gap-1.5"
                   >
                     {messages.chat.lazycatAttach}
                   </button>
@@ -4803,7 +4803,7 @@ export function ChatShell({
                           <button
                             type="button"
                             onClick={() => setSkillsOpen(false)}
-                            className="ui-button-secondary rounded-full px-2 py-1 text-[10px]"
+                            className="ui-button-secondary ui-button-chip font-medium"
                           >
                             {messages.common.cancel}
                           </button>
@@ -4819,7 +4819,7 @@ export function ChatShell({
                             <button
                               type="button"
                               onClick={handleRetryLoadSkills}
-                              className="ui-button-secondary mt-2 rounded-full px-2.5 py-1 text-[10px]"
+                              className="ui-button-secondary ui-button-chip mt-2 font-medium"
                             >
                               {messages.chat.retryLoadSkills}
                             </button>
@@ -4850,7 +4850,7 @@ export function ChatShell({
                     type="button"
                     onClick={handleToggleSkills}
                     disabled={composerDisabled || isBootstrap || uploading || loading}
-                    className="ui-button-secondary rounded-full px-2 py-1 text-[10px] disabled:cursor-not-allowed sm:px-2.5 sm:text-[11px]"
+                    className="ui-button-secondary ui-button-chip disabled:cursor-not-allowed"
                   >
                     {messages.chat.skills}
                   </button>
@@ -4867,7 +4867,7 @@ export function ChatShell({
                 <button
                   type="button"
                   onClick={handleCreateSessionClick}
-                  className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold sm:px-3 sm:py-1.5 sm:text-[11px]"
+                  className="ui-button-primary ui-button-chip shrink-0 font-semibold"
                 >
                   {messages.nav.newSession}
                 </button>
@@ -4875,7 +4875,7 @@ export function ChatShell({
                 <button
                   type="button"
                   disabled
-                  className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                  className="ui-button-secondary ui-button-chip shrink-0 font-semibold opacity-70 disabled:cursor-not-allowed"
                 >
                   {bootstrapPending ? messages.common.loading : messages.nav.newSession}
                 </button>
@@ -4883,7 +4883,7 @@ export function ChatShell({
                 <button
                   type="button"
                   disabled
-                  className="ui-button-secondary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold opacity-70 disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                  className="ui-button-secondary ui-button-chip shrink-0 font-semibold opacity-70 disabled:cursor-not-allowed"
                 >
                   {messages.chat.readOnly}
                 </button>
@@ -4893,7 +4893,7 @@ export function ChatShell({
                   onClick={() => {
                     void abortSession();
                   }}
-                  className="ui-button-danger inline-flex size-8 shrink-0 items-center justify-center rounded-full sm:size-9"
+                  className="ui-button-danger ui-icon-button shrink-0"
                   aria-label={messages.chat.abort}
                   title={messages.chat.abort}
                 >
@@ -4903,7 +4903,7 @@ export function ChatShell({
                 <button
                   type="submit"
                   disabled={!canSubmitActiveMessage}
-                  className="ui-button-primary shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold disabled:cursor-not-allowed sm:px-3 sm:py-1.5 sm:text-[11px]"
+                  className="ui-button-primary ui-button-chip shrink-0 font-semibold disabled:cursor-not-allowed"
                 >
                   {messages.chat.send}
                 </button>
@@ -4954,18 +4954,18 @@ export function ChatShell({
         aria-label={t(messages.nav.chatWorkspace, { agentId: user.openclawAgentId })}
         className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[0.9rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.74)] shadow-[var(--shadow-panel)]"
       >
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--border-subtle)] px-2 py-1.5">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--border-subtle)] px-3 py-2.5 sm:px-2 sm:py-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
               onClick={handleOpenDrawer}
-              className="ui-button-secondary inline-flex size-8 shrink-0 items-center justify-center rounded-full p-0 [&>svg]:block [&>svg]:-translate-y-px lg:hidden"
+              className="ui-button-secondary ui-icon-button !inline-flex shrink-0 [&>svg]:block [&>svg]:-translate-y-px lg:!hidden"
               aria-label={messages.nav.openDrawer}
               title={messages.nav.openDrawer}
             >
               <ChatBubbleIcon />
             </button>
-            <h2 className="truncate text-xs font-semibold text-[color:var(--text-primary)] sm:text-sm">
+            <h2 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
               {activeSession?.title ?? messages.nav.createSession}
             </h2>
           </div>
@@ -4976,7 +4976,7 @@ export function ChatShell({
                 onClick={() => {
                   void openShareModal(activeSession);
                 }}
-                className="ui-button-secondary inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-medium"
+                className="ui-button-secondary ui-button-chip inline-flex items-center gap-1 font-medium"
                 aria-label={messages.chat.shareSession}
                 title={messages.chat.shareSession}
               >
@@ -4991,13 +4991,13 @@ export function ChatShell({
         <div
           ref={messagesScrollerRef}
           onScroll={handleMessagesScroll}
-          className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2 sm:py-2"
+          className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-2 sm:py-2"
         >
-          <div key={activeSessionId ?? "no-session"} className="mx-auto flex min-h-full w-full max-w-none flex-col gap-1.5">
+          <div key={activeSessionId ?? "no-session"} className="mx-auto flex min-h-full w-full max-w-none flex-col gap-2">
             {pairing ? (
-              <div className="max-w-[96ch] rounded-[0.9rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-2.5 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
-                <p className="text-xs font-semibold">{messages.chat.pairingTitle}</p>
-                <p className="mt-1.5 text-xs text-[color:var(--text-secondary)]">
+              <div className="max-w-[96ch] rounded-[0.95rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-3 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
+                <p className="text-sm font-semibold">{messages.chat.pairingTitle}</p>
+                <p className="ui-field-note mt-1.5 text-[color:var(--text-secondary)]">
                   {messages.chat.pairingDescription}
                 </p>
               </div>
@@ -5046,7 +5046,7 @@ export function ChatShell({
             type="button"
             onClick={handleScrollToBottomClick}
             tabIndex={showScrollToBottom ? 0 : -1}
-            className={`ui-button-primary inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium shadow-[var(--shadow-float)] transition-[opacity,transform] duration-200 ${
+            className={`ui-button-primary ui-button-chip inline-flex items-center gap-2 font-medium shadow-[var(--shadow-float)] transition-[opacity,transform] duration-200 ${
               showScrollToBottom ? "pointer-events-auto" : "pointer-events-none"
             }`}
           >
@@ -5059,17 +5059,17 @@ export function ChatShell({
       </section>
 
       {renameTargetSession ? (
-        <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
+        <div className="ui-overlay fixed inset-0 z-40 flex items-end justify-center px-4 py-4 sm:items-center">
           <button
             type="button"
             aria-label={messages.nav.closeRenameModal}
             onClick={closeRenameModal}
             className="absolute inset-0"
           />
-          <div className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4">
+          <div className="ui-card ui-dialog relative z-10 w-full max-w-md">
             <div className="mb-4">
               <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.chat.renameSession}</p>
-              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.renameDescription}</p>
+              <p className="ui-field-note mt-1">{messages.chat.renameDescription}</p>
             </div>
 
             <form onSubmit={submitRenameSession}>
@@ -5093,26 +5093,26 @@ export function ChatShell({
                       closeRenameModal();
                     }
                   }}
-                  className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
+                  className="ui-input"
                   placeholder={messages.chat.sessionTitlePlaceholder}
                 />
               </label>
 
-              {renameError ? <p className="mt-2 text-xs text-red-600">{renameError}</p> : null}
+              {renameError ? <p className="ui-field-note mt-2 text-red-600">{renameError}</p> : null}
 
-              <div className="mt-4 flex items-center justify-end gap-2">
+              <div className="ui-dialog-actions mt-4">
                 <button
                   type="button"
                   onClick={closeRenameModal}
                   disabled={renameSubmitting}
-                  className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
+                  className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
                 >
                   {messages.common.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={renameSubmitting}
-                  className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
+                  className="ui-button-primary ui-button-chip font-semibold disabled:cursor-not-allowed"
                 >
                   {renameSubmitting ? messages.common.saving : messages.common.save}
                 </button>
@@ -5123,17 +5123,17 @@ export function ChatShell({
       ) : null}
 
       {shareTargetSession ? (
-        <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
+        <div className="ui-overlay fixed inset-0 z-40 flex items-end justify-center px-4 py-4 sm:items-center">
           <button
             type="button"
             aria-label={messages.chat.shareSession}
             onClick={closeShareModal}
             className="absolute inset-0"
           />
-          <div className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4">
+          <div className="ui-card ui-dialog relative z-10 w-full max-w-md">
             <div className="mb-4">
               <p className="text-sm font-semibold text-[color:var(--text-primary)]">{messages.chat.shareSession}</p>
-              <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.shareDescription}</p>
+              <p className="ui-field-note mt-1">{messages.chat.shareDescription}</p>
             </div>
 
             {shareLoading ? (
@@ -5141,7 +5141,7 @@ export function ChatShell({
             ) : (
               <form onSubmit={submitShareSession}>
                 <div className="space-y-2">
-                  <label className="flex items-start gap-2 rounded-[0.8rem] border border-[color:var(--border-subtle)] px-3 py-2">
+                  <label className="flex min-h-[var(--touch-target-min)] items-start gap-2 rounded-[0.95rem] border border-[color:var(--border-subtle)] px-3 py-3">
                     <input
                       type="radio"
                       name="share-access-mode"
@@ -5150,7 +5150,7 @@ export function ChatShell({
                     />
                     <span className="text-sm text-[color:var(--text-primary)]">{messages.chat.sharePublicOption}</span>
                   </label>
-                  <label className="flex items-start gap-2 rounded-[0.8rem] border border-[color:var(--border-subtle)] px-3 py-2">
+                  <label className="flex min-h-[var(--touch-target-min)] items-start gap-2 rounded-[0.95rem] border border-[color:var(--border-subtle)] px-3 py-3">
                     <input
                       type="radio"
                       name="share-access-mode"
@@ -5159,7 +5159,7 @@ export function ChatShell({
                     />
                     <div>
                       <p className="text-sm text-[color:var(--text-primary)]">{messages.chat.sharePasswordOption}</p>
-                      <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.chat.sharePasswordHint}</p>
+                      <p className="ui-field-note mt-1">{messages.chat.sharePasswordHint}</p>
                     </div>
                   </label>
                 </div>
@@ -5177,19 +5177,19 @@ export function ChatShell({
                         }
                       }}
                       disabled={shareSubmitting}
-                      className="ui-input w-full rounded-[0.8rem] px-3 py-2 text-sm"
+                      className="ui-input"
                       placeholder={messages.chat.sharePasswordPlaceholder}
                     />
                   </div>
                 ) : null}
 
                 <div className="mt-4 rounded-[0.8rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2">
-                  <p className="text-xs font-medium text-[color:var(--text-primary)]">
+                  <p className="text-sm font-medium text-[color:var(--text-primary)]">
                     {shareState?.enabled ? messages.chat.shareEnabled : messages.chat.shareDisabled}
                   </p>
                   {shareState?.shareUrl ? (
                     <div className="mt-2 flex items-center gap-2">
-                      <p className="min-w-0 flex-1 truncate text-xs text-[color:var(--text-tertiary)]">{shareCopyUrl}</p>
+                      <p className="min-w-0 flex-1 truncate text-sm text-[color:var(--text-tertiary)]">{shareCopyUrl}</p>
                       <CopyButton
                         text={shareCopyUrl}
                         successLabel={messages.chat.copied}
@@ -5206,14 +5206,14 @@ export function ChatShell({
                   ) : null}
                 </div>
 
-                {shareError ? <p className="mt-2 text-xs text-red-600">{shareError}</p> : null}
+                {shareError ? <p className="ui-field-note mt-2 text-red-600">{shareError}</p> : null}
 
-                <div className="mt-4 flex items-center justify-between gap-2">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={closeShareModal}
                     disabled={shareSubmitting}
-                    className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
+                    className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
                   >
                     {messages.common.cancel}
                   </button>
@@ -5225,7 +5225,7 @@ export function ChatShell({
                           void stopSharingSession();
                         }}
                         disabled={shareSubmitting}
-                        className="ui-button-secondary rounded-full px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed"
+                        className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
                       >
                         {messages.chat.shareStop}
                       </button>
@@ -5233,7 +5233,7 @@ export function ChatShell({
                     <button
                       type="submit"
                       disabled={shareSubmitting}
-                      className="ui-button-primary rounded-full px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
+                      className="ui-button-primary ui-button-chip font-semibold disabled:cursor-not-allowed"
                     >
                       {shareSubmitting ? messages.common.saving : messages.chat.shareUpdate}
                     </button>

@@ -50,18 +50,18 @@ export function LoginForm({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="ui-form-stack">
       {oidcEnabled ? (
         <>
           <a
             href={`/api/auth/oidc/start?locale=${locale}`}
-            className={`flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold ${
+            className={`w-full font-semibold ${
               primaryAuthMethod === "oidc" ? "ui-button-primary" : "ui-button-secondary"
             }`}
           >
             {oidcButtonLabel}
           </a>
-          <div className="relative py-1 text-center">
+          <div className="relative py-1.5 text-center">
             <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[color:var(--border-subtle)]" />
             <span className="relative bg-[color:var(--surface-primary)] px-3 text-xs uppercase tracking-[0.24em] text-[color:var(--text-quaternary)]">
               {messages.login.orContinueWithPassword}
@@ -69,8 +69,8 @@ export function LoginForm({
           </div>
         </>
       ) : null}
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-2">
+      <form onSubmit={handleSubmit} className="ui-form-stack">
+        <div className="space-y-2.5">
           <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="username">
             {messages.login.username}
           </label>
@@ -78,13 +78,13 @@ export function LoginForm({
             id="username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
+            className="ui-input ring-0"
             placeholder={messages.login.usernamePlaceholder}
             autoComplete="username"
             required
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <label className="text-sm font-medium text-[color:var(--text-secondary)]" htmlFor="password">
             {messages.login.password}
           </label>
@@ -93,17 +93,17 @@ export function LoginForm({
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="ui-input w-full rounded-2xl px-4 py-3 ring-0"
+            className="ui-input ring-0"
             placeholder={messages.login.passwordPlaceholder}
             autoComplete="current-password"
             required
           />
         </div>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? <p className="ui-field-note text-red-600">{error}</p> : null}
         <button
           type="submit"
           disabled={loading}
-          className={`w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed ${
+          className={`w-full font-semibold disabled:cursor-not-allowed ${
             primaryAuthMethod === "password" ? "ui-button-primary" : "ui-button-secondary"
           }`}
         >

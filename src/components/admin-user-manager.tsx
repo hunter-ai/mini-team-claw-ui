@@ -246,7 +246,7 @@ export function AdminUserManager({
         <button
           type="button"
           onClick={openCreateModal}
-          className="ui-button-primary rounded-full px-4 py-2 text-sm font-semibold"
+          className="ui-button-primary ui-button-chip font-semibold"
         >
           {messages.admin.createMemberAction}
         </button>
@@ -273,7 +273,7 @@ export function AdminUserManager({
                   type="button"
                   onClick={() => openResetPasswordModal(user)}
                   disabled={actionUserId === user.id}
-                  className="ui-button-secondary rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed"
+                  className="ui-button-secondary ui-button-chip disabled:cursor-not-allowed"
                 >
                   {messages.admin.forceResetPassword}
                 </button>
@@ -281,7 +281,7 @@ export function AdminUserManager({
                   type="button"
                   onClick={() => toggleUser(user)}
                   disabled={actionUserId === user.id}
-                  className="ui-button-secondary rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed"
+                  className="ui-button-secondary ui-button-chip disabled:cursor-not-allowed"
                 >
                   {actionUserId === user.id ? messages.common.saving : user.isActive ? messages.admin.disable : messages.admin.enable}
                 </button>
@@ -290,7 +290,7 @@ export function AdminUserManager({
                   onClick={() => deleteUser(user)}
                   disabled={user.isActive || actionUserId === user.id}
                   title={user.isActive ? messages.admin.onlyDisabledUsersCanBeDeleted : undefined}
-                  className="ui-button-danger rounded-full px-3 py-2 text-sm disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)]"
+                  className="ui-button-danger ui-button-chip disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)]"
                 >
                   {messages.admin.deleteUser}
                 </button>
@@ -306,7 +306,7 @@ export function AdminUserManager({
   );
 
   const createMemberModal = isCreateModalOpen ? (
-    <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
+    <div className="ui-overlay fixed inset-0 z-40 flex items-end justify-center px-4 py-4 sm:items-center">
       <button
         type="button"
         aria-label={messages.admin.closeCreateMemberModal}
@@ -317,20 +317,20 @@ export function AdminUserManager({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-member-modal-title"
-        className="ui-card relative z-10 w-full max-w-2xl rounded-[1rem] p-4 sm:p-5"
+        className="ui-card ui-dialog relative z-10"
       >
         <div className="mb-4">
           <p id="create-member-modal-title" className="text-sm font-semibold text-[color:var(--text-primary)]">
             {messages.admin.createMember}
           </p>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.admin.createMemberModalDescription}</p>
+          <p className="ui-field-note mt-1">{messages.admin.createMemberModalDescription}</p>
         </div>
         <form className="grid gap-4 md:grid-cols-2" onSubmit={createUser}>
           <input
             ref={createUsernameInputRef}
             value={form.username}
             onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-            className="ui-input rounded-2xl px-4 py-3"
+            className="ui-input"
             placeholder={messages.admin.usernamePlaceholder}
             required
           />
@@ -339,7 +339,7 @@ export function AdminUserManager({
             onChange={(event) =>
               setForm((current) => ({ ...current, openclawAgentId: event.target.value }))
             }
-            className="ui-input rounded-2xl px-4 py-3"
+            className="ui-input"
             placeholder={messages.admin.agentIdPlaceholder}
             required
           />
@@ -347,32 +347,32 @@ export function AdminUserManager({
             type="password"
             value={form.password}
             onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            className="ui-input rounded-2xl px-4 py-3"
+            className="ui-input"
             placeholder={messages.admin.passwordPlaceholder}
             required
           />
           <select
             value={form.role}
             onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as "ADMIN" | "MEMBER" }))}
-            className="ui-input rounded-2xl px-4 py-3"
+            className="ui-input"
           >
             <option value="MEMBER">{messages.admin.member}</option>
             <option value="ADMIN">{messages.admin.admin}</option>
           </select>
           {createError ? <p className="text-sm text-red-600 md:col-span-2">{createError}</p> : null}
-          <div className="flex items-center justify-end gap-2 md:col-span-2">
+          <div className="ui-dialog-actions md:col-span-2">
             <button
               type="button"
               onClick={closeCreateModal}
               disabled={createLoading}
-              className="ui-button-secondary rounded-full px-4 py-2 text-sm font-medium disabled:cursor-not-allowed"
+              className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
             >
               {messages.common.cancel}
             </button>
             <button
               type="submit"
               disabled={createLoading}
-              className="ui-button-primary rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed"
+              className="ui-button-primary ui-button-chip font-semibold disabled:cursor-not-allowed"
             >
               {createLoading ? messages.admin.creatingMember : messages.admin.createMemberAction}
             </button>
@@ -383,7 +383,7 @@ export function AdminUserManager({
   ) : null;
 
   const resetPasswordModal = resetPasswordTargetUser ? (
-    <div className="ui-overlay fixed inset-0 z-40 flex items-center justify-center px-4">
+    <div className="ui-overlay fixed inset-0 z-40 flex items-end justify-center px-4 py-4 sm:items-center">
       <button
         type="button"
         aria-label={messages.admin.closeResetPasswordModal}
@@ -394,13 +394,13 @@ export function AdminUserManager({
         role="dialog"
         aria-modal="true"
         aria-labelledby="reset-password-modal-title"
-        className="ui-card relative z-10 w-full max-w-md rounded-[1rem] p-4"
+        className="ui-card ui-dialog relative z-10 w-full max-w-md"
       >
         <div className="mb-4">
           <p id="reset-password-modal-title" className="text-sm font-semibold text-[color:var(--text-primary)]">
             {t(messages.admin.resetPasswordModalTitle, { username: resetPasswordTargetUser.username })}
           </p>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{messages.admin.resetPasswordModalDescription}</p>
+          <p className="ui-field-note mt-1">{messages.admin.resetPasswordModalDescription}</p>
         </div>
         <form
           onSubmit={(event) => {
@@ -421,25 +421,25 @@ export function AdminUserManager({
                   [resetPasswordTargetUser.id]: event.target.value,
                 }))
               }
-              className="ui-input w-full rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.admin.newPasswordPlaceholder}
             />
           </label>
-          <p className="mt-2 text-xs text-[color:var(--text-quaternary)]">{messages.admin.resetPasswordSessionHint}</p>
+          <p className="ui-field-note mt-2 text-[color:var(--text-quaternary)]">{messages.admin.resetPasswordSessionHint}</p>
           {resetError ? <p className="mt-3 text-sm text-red-600">{resetError}</p> : null}
-          <div className="mt-4 flex items-center justify-end gap-2">
+          <div className="ui-dialog-actions mt-4">
             <button
               type="button"
               onClick={closeResetPasswordModal}
               disabled={actionUserId === resetPasswordTargetUser.id}
-              className="ui-button-secondary rounded-full px-4 py-2 text-sm font-medium disabled:cursor-not-allowed"
+              className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
             >
               {messages.common.cancel}
             </button>
             <button
               type="submit"
               disabled={actionUserId === resetPasswordTargetUser.id}
-              className="ui-button-primary rounded-full px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed"
+              className="ui-button-primary ui-button-chip font-semibold disabled:cursor-not-allowed"
             >
               {actionUserId === resetPasswordTargetUser.id ? messages.common.saving : messages.admin.forceResetPassword}
             </button>

@@ -39,13 +39,13 @@ export function AdminShellNav({
                   href={localizeHref(locale, item.href)}
                   onClick={onNavigate}
                   className={[
-                    "block rounded-[1.35rem] border px-4 py-3",
+                    "block min-h-[var(--touch-target-min)] rounded-[1.2rem] border px-4 py-3.5",
                     isActive
                       ? "border-[color:var(--border-strong)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)] ring-1 ring-[rgba(15,23,42,0.05)] shadow-[0_6px_16px_rgba(15,23,42,0.05)]"
                       : "border-transparent bg-transparent text-[color:var(--text-secondary)] hover:border-[color:var(--border-subtle)] hover:bg-[color:var(--surface-subtle)] hover:text-[color:var(--text-primary)]",
                   ].join(" ")}
                 >
-                  <p className="text-sm font-semibold">{item.label}</p>
+                  <p className="text-sm font-semibold leading-6">{item.label}</p>
                 </Link>
               );
             })}

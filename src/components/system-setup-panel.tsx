@@ -185,13 +185,13 @@ export function SystemSetupPanel({
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--text-secondary)]">
             {messages.setup.description}
           </p>
-          <div className="mt-6 flex flex-col gap-2 text-sm text-[color:var(--text-secondary)] sm:flex-row sm:flex-wrap sm:gap-3">
+          <div className="mt-6 flex flex-col gap-2.5 text-sm text-[color:var(--text-secondary)] sm:flex-row sm:flex-wrap sm:gap-3">
             {[
               messages.setup.stepConnect,
               messages.setup.stepVerify,
               ...(usesSeedBootstrap ? [] : [messages.setup.stepAdmin]),
             ].map((step, index) => (
-              <div key={step} className="flex items-center gap-2 rounded-full bg-[color:var(--surface-subtle)] px-3 py-2">
+              <div key={step} className="flex min-h-[var(--touch-target-min)] items-center gap-2 rounded-full bg-[color:var(--surface-subtle)] px-3.5 py-2.5">
                 <span className="inline-flex size-5 items-center justify-center rounded-full bg-[color:var(--surface-contrast)] text-[10px] font-semibold text-[color:var(--text-inverse)]">
                   {index + 1}
                 </span>
@@ -207,52 +207,52 @@ export function SystemSetupPanel({
           {messages.setup.environmentTitle}
         </p>
         <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.setup.environmentDescription}</p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.databaseReady}</p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 text-[color:var(--text-secondary)]">
               {status.envDiagnostics.databaseConfigured ? messages.setup.stateReady : messages.setup.stateMissing}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.sessionSecretReady}</p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 text-[color:var(--text-secondary)]">
               {status.envDiagnostics.sessionSecretConfigured ? messages.setup.stateReady : messages.setup.stateMissing}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.uploadContainer}</p>
-            <p className="mt-1 break-all text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
               {status.envDiagnostics.uploadDirContainer}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.uploadHost}</p>
-            <p className="mt-1 break-all text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
               {status.envDiagnostics.uploadDirHost}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.lazycatPathPrefix}</p>
-            <p className="mt-1 break-all text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
               {status.envDiagnostics.lazycatPickerPathPrefix}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.lazycatHostRoot}</p>
-            <p className="mt-1 break-all text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
               {status.envDiagnostics.lazycatHostRoot}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.maxUploadBytes}</p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 text-[color:var(--text-secondary)]">
               {String(status.envDiagnostics.maxUploadBytes)}
             </p>
           </div>
-          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.verboseLevel}</p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            <p className="ui-field-note mt-1 text-[color:var(--text-secondary)]">
               {status.envDiagnostics.verboseLevel}
             </p>
           </div>
@@ -272,18 +272,18 @@ export function SystemSetupPanel({
         </div>
 
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={saveRuntimeConfig}>
-          <label className="space-y-2 md:col-span-2">
+          <label className="space-y-2.5 md:col-span-2">
             <span className="text-sm font-medium">{messages.setup.gatewayUrl}</span>
             <input
               value={runtimeForm.gatewayUrl}
               onChange={(event) =>
                 setRuntimeForm((current) => ({ ...current, gatewayUrl: event.target.value }))
               }
-              className="ui-input w-full rounded-2xl px-4 py-3"
+              className="ui-input"
               required
             />
           </label>
-          <label className="space-y-2">
+          <label className="space-y-2.5">
             <span className="text-sm font-medium">{messages.setup.gatewayToken}</span>
             <input
               type="password"
@@ -291,27 +291,27 @@ export function SystemSetupPanel({
               onChange={(event) =>
                 setRuntimeForm((current) => ({ ...current, gatewayToken: event.target.value }))
               }
-              className="ui-input w-full rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.setup.gatewayTokenPlaceholder}
               required={!status.runtimeConfig?.gatewayTokenConfigured}
             />
-            <p className="text-xs leading-6 text-[color:var(--text-tertiary)]">
+            <p className="ui-field-note">
               {messages.setup.gatewayTokenHint}
             </p>
           </label>
-          <label className="space-y-2">
+          <label className="space-y-2.5">
             <span className="text-sm font-medium">{messages.setup.appUrl}</span>
             <input
               value={runtimeForm.appUrl}
               onChange={(event) => setRuntimeForm((current) => ({ ...current, appUrl: event.target.value }))}
-              className="ui-input w-full rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.setup.appUrlPlaceholder}
             />
           </label>
           <button
             type="submit"
             disabled={savingRuntime}
-            className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold md:col-span-2"
+            className="ui-button-primary font-semibold md:col-span-2"
           >
             {savingRuntime ? messages.common.saving : messages.setup.saveRuntimeConfig}
           </button>
@@ -338,7 +338,7 @@ export function SystemSetupPanel({
             type="button"
             onClick={runGatewayTest}
             disabled={testingGateway}
-            className="ui-button-secondary mt-4 rounded-full px-4 py-2 text-sm font-medium"
+            className="ui-button-secondary ui-button-chip mt-4 font-medium"
           >
             {testingGateway
               ? messages.common.loading
@@ -396,7 +396,7 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
               {status.hasActiveAdmin ? messages.setup.firstAdminExists : messages.setup.firstAdminMissing}
             </p>
             {mode === "setup" && status.isComplete ? (
-              <Link href={loginHref} className="ui-button-primary mt-4 inline-flex rounded-full px-4 py-2 text-sm font-semibold">
+              <Link href={loginHref} className="ui-button-primary ui-button-chip mt-4 inline-flex font-semibold">
                 {messages.setup.goToLogin}
               </Link>
             ) : null}
@@ -405,7 +405,7 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
           <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm text-[color:var(--text-secondary)]">{messages.setup.firstAdminExists}</p>
             {mode === "setup" && status.isComplete ? (
-              <Link href={loginHref} className="ui-button-primary mt-4 inline-flex rounded-full px-4 py-2 text-sm font-semibold">
+              <Link href={loginHref} className="ui-button-primary ui-button-chip mt-4 inline-flex font-semibold">
                 {messages.setup.goToLogin}
               </Link>
             ) : null}
@@ -415,7 +415,7 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
             <input
               value={adminForm.username}
               onChange={(event) => setAdminForm((current) => ({ ...current, username: event.target.value }))}
-              className="ui-input rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.setup.username}
               required
             />
@@ -423,7 +423,7 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
               type="password"
               value={adminForm.password}
               onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
-              className="ui-input rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.setup.password}
               minLength={8}
               required
@@ -433,14 +433,14 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
               onChange={(event) =>
                 setAdminForm((current) => ({ ...current, openclawAgentId: event.target.value }))
               }
-              className="ui-input rounded-2xl px-4 py-3"
+              className="ui-input"
               placeholder={messages.setup.agentId}
               required
             />
             <button
               type="submit"
               disabled={creatingAdmin}
-              className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold md:col-span-3"
+              className="ui-button-primary font-semibold md:col-span-3"
             >
               {creatingAdmin ? messages.common.saving : messages.setup.createFirstAdmin}
             </button>

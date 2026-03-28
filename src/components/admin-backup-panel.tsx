@@ -368,7 +368,7 @@ export function AdminBackupPanel({
               type="button"
               onClick={() => void exportBackup("users")}
               disabled={busyKind !== null}
-              className="ui-button-primary rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
+              className="ui-button-primary font-semibold disabled:cursor-not-allowed"
             >
               {busyKind === "users" ? messages.common.loading : messages.adminBackup.exportUsers}
             </button>
@@ -376,7 +376,7 @@ export function AdminBackupPanel({
               type="button"
               onClick={() => void exportBackup("conversations")}
               disabled={busyKind !== null}
-              className="ui-button-secondary rounded-2xl px-4 py-3 text-sm disabled:cursor-not-allowed"
+              className="ui-button-secondary font-medium disabled:cursor-not-allowed"
             >
               {busyKind === "conversations" ? messages.common.loading : messages.adminBackup.exportConversations}
             </button>
@@ -389,13 +389,16 @@ export function AdminBackupPanel({
         <div className={`${sectionClass} rounded-2xl p-4`}>
           <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.adminBackup.importTitle}</p>
           <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.adminBackup.importDescription}</p>
-          <input
-            type="file"
-            multiple
-            accept="application/json,.json"
-            onChange={(event) => void handleFileChange(Array.from(event.target.files ?? []))}
-            className="mt-4 block w-full text-sm text-[color:var(--text-secondary)] file:mr-4 file:rounded-full file:border-0 file:bg-[color:var(--surface-primary)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[color:var(--text-primary)]"
-          />
+          <label className="ui-file-trigger mt-4 w-full">
+            <input
+              type="file"
+              multiple
+              accept="application/json,.json"
+              onChange={(event) => void handleFileChange(Array.from(event.target.files ?? []))}
+              className="sr-only"
+            />
+            <span>{messages.adminBackup.importAction}</span>
+          </label>
           {previewDescription ? (
             <p className="mt-3 text-sm text-[color:var(--text-secondary)]">{previewDescription}</p>
           ) : (
@@ -420,7 +423,7 @@ export function AdminBackupPanel({
             type="button"
             onClick={() => void importBackup()}
             disabled={selectedFiles.length === 0 || importing || (preview?.kind === "conversations" && !preview.ready)}
-            className="ui-button-primary mt-4 rounded-2xl px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed"
+            className="ui-button-primary mt-4 font-semibold disabled:cursor-not-allowed"
           >
             {importing ? messages.common.loading : messages.adminBackup.importAction}
           </button>

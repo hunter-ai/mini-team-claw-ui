@@ -16,8 +16,8 @@ export async function SetupPage({ locale }: { locale: Locale }) {
   ]);
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6">
-      <header className="mb-6 flex items-center justify-end">
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-6">
+      <header className="mb-5 flex items-center justify-end sm:mb-6">
         <LanguageSwitcher locale={locale} messages={messages} />
       </header>
       <SystemSetupPanel locale={locale} messages={messages} initialStatus={status} mode={user ? "admin" : "setup"} />

@@ -60,22 +60,22 @@ export async function LoginPage({
   const primaryAuthMethod = resolveLoginPrimaryAuthMethod(oidcEnabled);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-6 sm:px-5 sm:py-10">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.78),transparent_26%),linear-gradient(180deg,rgba(248,250,252,0.86),rgba(243,244,246,0.24))]" />
-      <div className="ui-card relative w-full max-w-md rounded-[2.4rem] p-8">
+      <div className="ui-card relative w-full max-w-md rounded-[2rem] p-5 sm:rounded-[2.4rem] sm:p-8">
         <div className="flex items-start justify-between gap-4">
           <p className="text-xs uppercase tracking-[0.35em] text-[color:var(--text-tertiary)]">{messages.login.eyebrow}</p>
-          <LanguageSwitcher locale={locale} messages={messages} />
+          <LanguageSwitcher locale={locale} messages={messages} className="shrink-0" />
         </div>
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[color:var(--text-primary)]">
+        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-4xl">
           {messages.login.title}
         </h1>
-        <p className="mt-4 text-sm leading-7 text-[color:var(--text-secondary)]">
+        <p className="mt-3 text-sm leading-7 text-[color:var(--text-secondary)]">
           {messages.login.description}
         </p>
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           {loginError ? (
-            <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p className="mb-4 rounded-[1rem] border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
               {loginError}
             </p>
           ) : null}
@@ -88,7 +88,7 @@ export async function LoginPage({
           />
         </div>
         {!oidcEnabled ? (
-          <p className="mt-4 text-xs text-[color:var(--text-tertiary)]">{messages.login.oidcUnavailableHint}</p>
+          <p className="ui-field-note mt-4">{messages.login.oidcUnavailableHint}</p>
         ) : null}
       </div>
     </main>
