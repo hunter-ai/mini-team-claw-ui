@@ -25,5 +25,6 @@ COPY --from=builder /app/src ./src
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/postcss.config.mjs ./postcss.config.mjs
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/scripts/start-prod.sh ./scripts/start-prod.sh
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma db push && npm run db:seed && npm run start"]
+CMD ["sh", "./scripts/start-prod.sh"]
