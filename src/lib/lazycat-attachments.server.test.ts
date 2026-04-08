@@ -6,12 +6,12 @@ import { mapLazycatPickerDetailToAttachments } from "@/lib/lazycat-attachments.s
 test.beforeEach(() => {
   process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
   process.env.SESSION_SECRET ??= "12345678901234567890123456789012";
-  process.env.LAZYCAT_DOCUMENTS_ROOT ??= "/lzcapp/run/mnt/home/hunter";
+  process.env.LAZYCAT_SOURCE_FILE_ACCESS_ROOT ??= "/lzcapp/run/mnt/home/hunter";
   resetStartupEnvForTests();
 });
 
 test.afterEach(() => {
-  delete process.env.LAZYCAT_DOCUMENTS_ROOT;
+  delete process.env.LAZYCAT_SOURCE_FILE_ACCESS_ROOT;
   resetStartupEnvForTests();
 });
 
@@ -54,8 +54,8 @@ test("mapLazycatPickerDetailToAttachments maps multiple selected files", () => {
   ]);
 });
 
-test("mapLazycatPickerDetailToAttachments rejects missing configured roots", () => {
-  delete process.env.LAZYCAT_DOCUMENTS_ROOT;
+test("mapLazycatPickerDetailToAttachments rejects missing configured access roots", () => {
+  delete process.env.LAZYCAT_SOURCE_FILE_ACCESS_ROOT;
   resetStartupEnvForTests();
 
   assert.throws(
@@ -63,7 +63,7 @@ test("mapLazycatPickerDetailToAttachments rejects missing configured roots", () 
       mapLazycatPickerDetailToAttachments({
         detail: ['[{"basename":"alpha.txt","filename":"/lazycat/team/alpha.txt","type":"file"}]', undefined],
       }),
-    /LAZYCAT_DOCUMENTS_ROOT is not configured/,
+    /LAZYCAT_SOURCE_FILE_ACCESS_ROOT is not configured/,
   );
 });
 
@@ -78,7 +78,7 @@ test("mapLazycatPickerDetailToAttachments rejects non-file entries", () => {
 });
 
 test("mapLazycatPickerDetailToAttachments reads the Lazycat root from env", () => {
-  process.env.LAZYCAT_DOCUMENTS_ROOT = "/lzcapp/run/mnt/home/custom-user";
+  process.env.LAZYCAT_SOURCE_FILE_ACCESS_ROOT = "/lzcapp/run/mnt/home/custom-user";
   resetStartupEnvForTests();
 
   const attachments = mapLazycatPickerDetailToAttachments({

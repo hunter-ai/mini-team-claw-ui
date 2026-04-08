@@ -15,8 +15,8 @@ test("persistUploadFromPath copies a source file into the shared upload director
   const uploadContainer = path.join(root, "container");
   const uploadHost = path.join(root, "host");
 
-  process.env.OPENCLAW_UPLOAD_DIR_CONTAINER = uploadContainer;
-  process.env.OPENCLAW_UPLOAD_DIR_HOST = uploadHost;
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = uploadContainer;
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = uploadHost;
   resetStartupEnvForTests();
 
   const content = Buffer.from("lazycat attachment payload");
@@ -36,10 +36,42 @@ test("persistUploadFromPath copies a source file into the shared upload director
   }
 });
 
+test("persistUpload and persistUploadFromPath share the same relative path mapping", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mtc-upload-"));
+  const sourcePath = path.join(root, "source.txt");
+  const uploadContainer = path.join(root, "container");
+  const uploadHost = path.join(root, "host");
+
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = uploadContainer;
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = uploadHost;
+  resetStartupEnvForTests();
+
+  await writeFile(sourcePath, Buffer.from("lazycat attachment payload"));
+
+  try {
+    const browserUpload = await persistUpload(
+      "user_1",
+      "session_1",
+      new File(["payload"], "notes.txt", { type: "text/plain" }),
+    );
+    const lazycatUpload = await persistUploadFromPath("user_1", "session_1", sourcePath, "notes.txt");
+
+    const browserRelativeContainer = path.relative(uploadContainer, browserUpload.containerPath);
+    const browserRelativeHost = path.relative(uploadHost, browserUpload.hostPath);
+    const lazycatRelativeContainer = path.relative(uploadContainer, lazycatUpload.containerPath);
+    const lazycatRelativeHost = path.relative(uploadHost, lazycatUpload.hostPath);
+
+    assert.equal(browserRelativeContainer, browserRelativeHost);
+    assert.equal(lazycatRelativeContainer, lazycatRelativeHost);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("persistUpload keeps MIME validation for browser uploads", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mtc-upload-"));
-  process.env.OPENCLAW_UPLOAD_DIR_CONTAINER = path.join(root, "container");
-  process.env.OPENCLAW_UPLOAD_DIR_HOST = path.join(root, "host");
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = path.join(root, "container");
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = path.join(root, "host");
   resetStartupEnvForTests();
 
   try {
@@ -63,8 +95,8 @@ test("persistUploadFromPath enforces MAX_UPLOAD_BYTES without copying the file",
   const uploadContainer = path.join(root, "container");
   const uploadHost = path.join(root, "host");
 
-  process.env.OPENCLAW_UPLOAD_DIR_CONTAINER = uploadContainer;
-  process.env.OPENCLAW_UPLOAD_DIR_HOST = uploadHost;
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = uploadContainer;
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = uploadHost;
   process.env.MAX_UPLOAD_BYTES = "4";
   resetStartupEnvForTests();
 

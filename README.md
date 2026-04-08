@@ -171,10 +171,11 @@ The project validates environment variables in `src/lib/env.ts`.
 | `SESSION_SECRET` | Yes | Session signing secret. Must be at least 32 characters. |
 | `ADMIN_BOOTSTRAP_MODE` | No | Administrator bootstrap mode. Use `seed` for development and `ui` for production-style first-run setup. Default: `seed`. |
 | `ENABLE_LAZYCAT_FILE_PICKER` | No | Set to `true` to expose the Lazycat NAS file picker entry in chat when the runtime supports it. Default: `false`. |
+| `ATTACHMENTS_FILE_ACCESS_ROOT` | No | Real attachment storage root as seen by the UI service. Browser uploads are written here, and copied Lazycat files land here. Default: `/shared/uploads`. |
+| `ATTACHMENTS_MESSAGE_PATH_ROOT` | No | Path root written into attachment paths sent to OpenClaw/Longxia. Default: `/srv/miniteamclaw/uploads`. |
+| `LAZYCAT_SOURCE_FILE_ACCESS_ROOT` | No | Real Lazycat source root as seen by the UI service before a selected file is copied into the attachment storage root. Required when using Lazycat attachments. |
 | `OPENCLAW_GATEWAY_URL` | Yes | WebSocket URL for the OpenClaw gateway. |
 | `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
-| `OPENCLAW_UPLOAD_DIR_CONTAINER` | No | Upload directory as seen by this app. Default: `/shared/uploads`. |
-| `OPENCLAW_UPLOAD_DIR_HOST` | No | Matching host path that OpenClaw can read. Default: `/srv/miniteamclaw/uploads`. |
 | `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `1073741824` (1 GiB). |
 | `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
 | `APP_URL` | No | Public app URL used where absolute URLs are needed. |
@@ -237,8 +238,10 @@ The app stores local chat/session state even though model execution happens thro
 
 - The browser does not connect to OpenClaw directly.
 - The web server must be able to reach the gateway over WebSocket.
-- The upload directory mapping must be correct on both the app side and the OpenClaw side.
-- Lazycat selections are read from `LAZYCAT_DOCUMENTS_ROOT/...`. This env var must be set explicitly, for example `/lzcapp/run/mnt/home/<deployed-username>`.
+- `ATTACHMENTS_FILE_ACCESS_ROOT` and `ATTACHMENTS_MESSAGE_PATH_ROOT` are the new canonical pair for attachment paths. All attached files use the same relative path under these two roots.
+- Browser uploads are written into `ATTACHMENTS_FILE_ACCESS_ROOT`, then sent to OpenClaw using the matching path under `ATTACHMENTS_MESSAGE_PATH_ROOT`.
+- Lazycat-selected files are first read from `LAZYCAT_SOURCE_FILE_ACCESS_ROOT`, then copied into `ATTACHMENTS_FILE_ACCESS_ROOT`, and finally sent using the matching path under `ATTACHMENTS_MESSAGE_PATH_ROOT`.
+- Example split-path deployment: the UI writes `/shared/uploads/...`, while OpenClaw reads the same attached file at `/lzcapp/run/mnt/home/miniteamclawui/uploads/...`.
 - The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
 - The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.2` and reads environment values from `.env.prod` by default.
 - In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:18789`.

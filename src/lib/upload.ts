@@ -48,8 +48,8 @@ function buildUploadPaths(userId: string, sessionId: string, fileName: string) {
   const filename = `${randomUUID()}_${safeName}`;
   const relativePath = path.join(userId, segment, sessionId, filename);
   return {
-    containerPath: path.join(env.OPENCLAW_UPLOAD_DIR_CONTAINER, relativePath),
-    hostPath: path.join(env.OPENCLAW_UPLOAD_DIR_HOST, relativePath),
+    containerPath: path.join(env.ATTACHMENTS_FILE_ACCESS_ROOT, relativePath),
+    hostPath: path.join(env.ATTACHMENTS_MESSAGE_PATH_ROOT, relativePath),
   };
 }
 

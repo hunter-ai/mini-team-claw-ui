@@ -140,6 +140,7 @@ test("createLazycatAttachments returns created attachment summaries after a succ
             attachment: {
               create: async ({ data }: { data: LazycatMappedAttachmentInput & PersistedUpload }) => {
                 createdCount += 1;
+                assert.equal(data.hostPath.startsWith("/host/"), true);
                 return {
                   id: `attachment_${createdCount}`,
                   originalName: data.originalName,

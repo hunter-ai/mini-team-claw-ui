@@ -25,13 +25,14 @@ export function mapLazycatPickerDetailToAttachments({
 }: {
   detail: LazycatPickerSubmitDetail;
 }) {
-  const configuredRoot = getStartupEnv().LAZYCAT_DOCUMENTS_ROOT?.trim();
-  if (!configuredRoot) {
-    throw new Error("LAZYCAT_DOCUMENTS_ROOT is not configured.");
+  const env = getStartupEnv();
+  const configuredAccessRoot = env.LAZYCAT_SOURCE_FILE_ACCESS_ROOT?.trim();
+  if (!configuredAccessRoot) {
+    throw new Error("LAZYCAT_SOURCE_FILE_ACCESS_ROOT is not configured.");
   }
-  const lazycatDocumentsRoot = normalizeAbsolutePosixPath(
-    configuredRoot,
-    "Lazycat documents root",
+  const lazycatFileAccessRoot = normalizeAbsolutePosixPath(
+    configuredAccessRoot,
+    "Lazycat source file access root",
   );
 
   return parseLazycatPickerEntries(detail).map((entry) => {
@@ -49,7 +50,7 @@ export function mapLazycatPickerDetailToAttachments({
     return {
       originalName: entry.basename?.trim() || path.posix.basename(normalizedFilename),
       mime: entry.mime?.trim() || "application/octet-stream",
-      sourcePath: path.posix.join(lazycatDocumentsRoot, normalizedRelativePath),
+      sourcePath: path.posix.join(lazycatFileAccessRoot, normalizedRelativePath),
     } satisfies LazycatMappedAttachmentInput;
   });
 }

@@ -223,13 +223,13 @@ export function SystemSetupPanel({
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.uploadContainer}</p>
             <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
-              {status.envDiagnostics.uploadDirContainer}
+              {status.envDiagnostics.attachmentsFileAccessRoot}
             </p>
           </div>
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
             <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.uploadHost}</p>
             <p className="ui-field-note mt-1 break-all text-[color:var(--text-secondary)]">
-              {status.envDiagnostics.uploadDirHost}
+              {status.envDiagnostics.attachmentsMessagePathRoot}
             </p>
           </div>
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">

@@ -170,10 +170,11 @@ docker compose -f docker-compose.prod.yml up -d
 | `SESSION_SECRET` | 是 | Session 签名密钥，长度至少 32 个字符。 |
 | `ADMIN_BOOTSTRAP_MODE` | 否 | 管理员初始化模式。开发建议使用 `seed`，生产首次安装建议使用 `ui`。默认值：`seed`。 |
 | `ENABLE_LAZYCAT_FILE_PICKER` | 否 | 设为 `true` 后，会在运行环境支持时于聊天页显示懒猫微服 NAS 文件选择入口。默认值：`false`。 |
+| `ATTACHMENTS_FILE_ACCESS_ROOT` | 否 | UI 服务视角下的真实附件存储根目录。浏览器上传文件会写到这里，从懒猫复制出来的文件也会落到这里。默认值：`/shared/uploads`。 |
+| `ATTACHMENTS_MESSAGE_PATH_ROOT` | 否 | 发送给 OpenClaw/龙虾时使用的附件路径根目录。默认值：`/srv/miniteamclaw/uploads`。 |
+| `LAZYCAT_SOURCE_FILE_ACCESS_ROOT` | 否 | UI 服务在复制前实际读取懒猫原文件时使用的根目录。使用懒猫附件时必须配置。 |
 | `OPENCLAW_GATEWAY_URL` | 是 | OpenClaw gateway 的 WebSocket 地址。 |
 | `OPENCLAW_GATEWAY_TOKEN` | 否 | 如果你的 OpenClaw 部署要求 token，可在这里配置。 |
-| `OPENCLAW_UPLOAD_DIR_CONTAINER` | 否 | 本应用视角下的上传目录，默认 `/shared/uploads`。 |
-| `OPENCLAW_UPLOAD_DIR_HOST` | 否 | OpenClaw 可读取的宿主机路径，默认 `/srv/miniteamclaw/uploads`。 |
 | `MAX_UPLOAD_BYTES` | 否 | 单个附件大小上限，默认 `1073741824`（1 GiB）。 |
 | `OPENCLAW_VERBOSE_LEVEL` | 否 | Gateway 日志详细程度，可选值：`off`、`full`。 |
 | `APP_URL` | 否 | 在需要绝对地址时使用的应用外部访问地址。 |
@@ -235,8 +236,10 @@ Prisma schema 目前包含以下核心实体：
 
 - 浏览器不会直接连接 OpenClaw。
 - Web 服务必须能够通过 WebSocket 访问 gateway。
-- 上传目录在应用侧和 OpenClaw 侧的映射必须一致。
-- 懒猫文件选择器选中文件后，服务端会按 `LAZYCAT_DOCUMENTS_ROOT/...` 读取源文件。这个环境变量必须显式配置，例如 `/lzcapp/run/mnt/home/<部署时填写的用户名>`。
+- `ATTACHMENTS_FILE_ACCESS_ROOT` 和 `ATTACHMENTS_MESSAGE_PATH_ROOT` 是附件路径的新标准变量。所有附件都在这两个根目录下共享同一个相对路径。
+- 浏览器直接上传的文件会写入 `ATTACHMENTS_FILE_ACCESS_ROOT`，发送给 OpenClaw/龙虾时则改写成 `ATTACHMENTS_MESSAGE_PATH_ROOT` 下的对应路径。
+- 懒猫选择的文件会先从 `LAZYCAT_SOURCE_FILE_ACCESS_ROOT` 读取，再复制到 `ATTACHMENTS_FILE_ACCESS_ROOT`，最后按 `ATTACHMENTS_MESSAGE_PATH_ROOT` 下的对应路径发给 OpenClaw/龙虾。
+- 一个典型的分离部署示例是：UI 把附件写到 `/shared/uploads/...`，而 OpenClaw/龙虾读取同一附件时使用 `/lzcapp/run/mnt/home/miniteamclawui/uploads/...`。
 - 仓库内置的 `docker-compose.yml` 默认使用宿主机目录 `/home/openclaw/miniteamclaw/uploads`。
 - 仓库内置的 `docker-compose.prod.yml` 默认拉取 `ihunterdev/miniteamclawui:0.0.2`，并优先读取 `.env.prod` 里的环境变量。
 - Docker 模式下，`OPENCLAW_GATEWAY_URL` 通常会配置为 `ws://host.docker.internal:18789`。

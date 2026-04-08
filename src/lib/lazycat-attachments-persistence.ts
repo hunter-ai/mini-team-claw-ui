@@ -3,11 +3,15 @@ import { prisma } from "@/lib/prisma";
 import {
   persistUploadFromPath,
   removePersistedUpload,
-  type PersistedUpload,
 } from "@/lib/upload";
 import type { LazycatMappedAttachmentInput } from "@/lib/lazycat-attachments.server";
 
-type PersistedLazycatAttachment = LazycatMappedAttachmentInput & PersistedUpload;
+type PersistedLazycatAttachment = LazycatMappedAttachmentInput & {
+  containerPath: string;
+  hostPath: string;
+  size: number;
+  sha256: string;
+};
 
 type AttachmentSummary = {
   id: string;
@@ -29,7 +33,7 @@ const defaultDependencies: LazycatPersistenceDependencies = {
 };
 
 async function cleanupPersistedUploads(
-  savedUploads: Array<Pick<PersistedUpload, "containerPath">>,
+  savedUploads: Array<Pick<PersistedLazycatAttachment, "containerPath">>,
   removeUpload: LazycatPersistenceDependencies["removePersistedUpload"],
 ) {
   await Promise.allSettled(savedUploads.map((upload) => removeUpload(upload)));
@@ -56,7 +60,13 @@ export async function createLazycatAttachments({
         attachment.sourcePath,
         attachment.originalName,
       );
-      savedUploads.push({ ...attachment, ...saved });
+      savedUploads.push({
+        ...attachment,
+        containerPath: saved.containerPath,
+        hostPath: saved.hostPath,
+        size: saved.size,
+        sha256: saved.sha256,
+      });
     }
   } catch (error) {
     await cleanupPersistedUploads(savedUploads, dependencies.removePersistedUpload);
