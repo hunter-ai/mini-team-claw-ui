@@ -39,7 +39,6 @@ export async function POST(request: Request) {
   try {
     const mappedAttachments = mapLazycatPickerDetailToAttachments({
       detail: payload.data.pickerDetail,
-      username: user.username,
     });
 
     const attachments = await createLazycatAttachments({

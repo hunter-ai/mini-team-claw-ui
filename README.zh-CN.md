@@ -236,7 +236,7 @@ Prisma schema 目前包含以下核心实体：
 - 浏览器不会直接连接 OpenClaw。
 - Web 服务必须能够通过 WebSocket 访问 gateway。
 - 上传目录在应用侧和 OpenClaw 侧的映射必须一致。
-- 懒猫文件选择器选中文件后，服务端会按 `/lzcapp/documents/<用户名>/...` 读取源文件，复制到上传目录，再把上传目录里的宿主机路径传给 OpenClaw。
+- 懒猫文件选择器选中文件后，服务端会按 `LAZYCAT_DOCUMENTS_ROOT/...` 读取源文件。这个环境变量必须显式配置，例如 `/lzcapp/run/mnt/home/<部署时填写的用户名>`。
 - 仓库内置的 `docker-compose.yml` 默认使用宿主机目录 `/home/openclaw/miniteamclaw/uploads`。
 - 仓库内置的 `docker-compose.prod.yml` 默认拉取 `ihunterdev/miniteamclawui:0.0.2`，并优先读取 `.env.prod` 里的环境变量。
 - Docker 模式下，`OPENCLAW_GATEWAY_URL` 通常会配置为 `ws://host.docker.internal:18789`。

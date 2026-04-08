@@ -13,6 +13,7 @@ const startupEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  LAZYCAT_DOCUMENTS_ROOT: z.string().optional(),
   OPENCLAW_UPLOAD_DIR_CONTAINER: z.string().default("/shared/uploads"),
   OPENCLAW_UPLOAD_DIR_HOST: z.string().default("/srv/miniteamclaw/uploads"),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(1024 * 1024 * 1024),
@@ -36,6 +37,7 @@ export function getStartupEnv() {
       SESSION_SECRET: process.env.SESSION_SECRET,
       ADMIN_BOOTSTRAP_MODE: emptyToUndefined(process.env.ADMIN_BOOTSTRAP_MODE),
       ENABLE_LAZYCAT_FILE_PICKER: emptyToUndefined(process.env.ENABLE_LAZYCAT_FILE_PICKER),
+      LAZYCAT_DOCUMENTS_ROOT: emptyToUndefined(process.env.LAZYCAT_DOCUMENTS_ROOT),
       OPENCLAW_UPLOAD_DIR_CONTAINER: process.env.OPENCLAW_UPLOAD_DIR_CONTAINER,
       OPENCLAW_UPLOAD_DIR_HOST: process.env.OPENCLAW_UPLOAD_DIR_HOST,
       MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
@@ -62,6 +64,7 @@ export function getStartupEnvDiagnostics() {
     sessionSecretConfigured: Boolean(env.SESSION_SECRET),
     adminBootstrapMode: env.ADMIN_BOOTSTRAP_MODE,
     lazycatFilePickerEnabled: env.ENABLE_LAZYCAT_FILE_PICKER,
+    lazycatDocumentsRootConfigured: Boolean(env.LAZYCAT_DOCUMENTS_ROOT?.trim()),
     uploadDirContainer: env.OPENCLAW_UPLOAD_DIR_CONTAINER,
     uploadDirHost: env.OPENCLAW_UPLOAD_DIR_HOST,
     maxUploadBytes: env.MAX_UPLOAD_BYTES,

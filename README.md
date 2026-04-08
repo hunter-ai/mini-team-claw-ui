@@ -238,7 +238,7 @@ The app stores local chat/session state even though model execution happens thro
 - The browser does not connect to OpenClaw directly.
 - The web server must be able to reach the gateway over WebSocket.
 - The upload directory mapping must be correct on both the app side and the OpenClaw side.
-- Lazycat selections are read from `/lzcapp/documents/<username>/...`, copied into the shared upload directory, and then attached using the normal upload host path.
+- Lazycat selections are read from `LAZYCAT_DOCUMENTS_ROOT/...`. This env var must be set explicitly, for example `/lzcapp/run/mnt/home/<deployed-username>`.
 - The bundled `docker-compose.yml` assumes the host upload path `/home/openclaw/miniteamclaw/uploads`.
 - The bundled `docker-compose.prod.yml` pulls `ihunterdev/miniteamclawui:0.0.2` and reads environment values from `.env.prod` by default.
 - In Docker mode, `OPENCLAW_GATEWAY_URL` commonly points to `ws://host.docker.internal:18789`.
