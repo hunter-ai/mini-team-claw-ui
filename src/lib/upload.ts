@@ -3,27 +3,15 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getStartupEnv } from "@/lib/env";
 
-const allowedMimeTypes = new Set([
-  "application/pdf",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "text/csv",
-  "text/markdown",
-  "text/plain",
-]);
+export const DEFAULT_UPLOAD_MIME = "application/octet-stream";
 
 function sanitizeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-export function ensureMimeAllowed(mime: string) {
-  return allowedMimeTypes.has(mime);
+export function normalizeUploadMime(mime: string | null | undefined) {
+  const normalized = mime?.trim();
+  return normalized ? normalized : DEFAULT_UPLOAD_MIME;
 }
 
 function ensureWithinMaxUploadBytes(size: number) {
@@ -38,6 +26,7 @@ export type PersistedUpload = {
   hostPath: string;
   size: number;
   sha256: string;
+  mime: string;
 };
 
 function buildUploadPaths(userId: string, sessionId: string, fileName: string) {
@@ -53,7 +42,13 @@ function buildUploadPaths(userId: string, sessionId: string, fileName: string) {
   };
 }
 
-async function persistUploadBuffer(userId: string, sessionId: string, fileName: string, buffer: Buffer): Promise<PersistedUpload> {
+async function persistUploadBuffer(
+  userId: string,
+  sessionId: string,
+  fileName: string,
+  buffer: Buffer,
+  mime: string,
+): Promise<PersistedUpload> {
   const { containerPath, hostPath } = buildUploadPaths(userId, sessionId, fileName);
 
   await mkdir(path.dirname(containerPath), { recursive: true });
@@ -64,23 +59,26 @@ async function persistUploadBuffer(userId: string, sessionId: string, fileName: 
     hostPath,
     size: buffer.byteLength,
     sha256: createHash("sha256").update(buffer).digest("hex"),
+    mime,
   };
 }
 
 export async function persistUpload(userId: string, sessionId: string, file: File) {
-  if (!ensureMimeAllowed(file.type)) {
-    throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
-  }
-
   ensureWithinMaxUploadBytes(file.size);
 
-  return persistUploadBuffer(userId, sessionId, file.name, Buffer.from(await file.arrayBuffer()));
+  return persistUploadBuffer(
+    userId,
+    sessionId,
+    file.name,
+    Buffer.from(await file.arrayBuffer()),
+    normalizeUploadMime(file.type),
+  );
 }
 
 export async function persistUploadFromPath(userId: string, sessionId: string, sourcePath: string, fileName: string) {
   const buffer = await readFile(sourcePath);
   ensureWithinMaxUploadBytes(buffer.byteLength);
-  return persistUploadBuffer(userId, sessionId, fileName, buffer);
+  return persistUploadBuffer(userId, sessionId, fileName, buffer, DEFAULT_UPLOAD_MIME);
 }
 
 export async function removePersistedUpload(upload: Pick<PersistedUpload, "containerPath">) {

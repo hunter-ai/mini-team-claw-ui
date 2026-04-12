@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         sessionId: session.id,
         source: AttachmentSource.UPLOAD,
         originalName: file.name,
-        mime: file.type,
+        mime: saved.mime,
         size: file.size,
         sha256: saved.sha256,
         containerPath: saved.containerPath,

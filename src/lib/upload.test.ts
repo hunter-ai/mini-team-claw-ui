@@ -68,22 +68,63 @@ test("persistUpload and persistUploadFromPath share the same relative path mappi
   }
 });
 
-test("persistUpload keeps MIME validation for browser uploads", async () => {
+test("persistUpload accepts browser uploads with executable MIME types", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "mtc-upload-"));
   process.env.ATTACHMENTS_FILE_ACCESS_ROOT = path.join(root, "container");
   process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = path.join(root, "host");
   resetStartupEnvForTests();
 
   try {
-    await assert.rejects(
-      () =>
-        persistUpload(
-          "user_1",
-          "session_1",
-          new File(["payload"], "script.js", { type: "application/javascript" }),
-        ),
-      /Unsupported file type/,
+    const saved = await persistUpload(
+      "user_1",
+      "session_1",
+      new File(["payload"], "script.js", { type: "application/javascript" }),
     );
+
+    assert.equal(saved.mime, "application/javascript");
+    assert.equal(saved.size, "payload".length);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("persistUpload falls back to application/octet-stream when the browser omits MIME", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mtc-upload-"));
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = path.join(root, "container");
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = path.join(root, "host");
+  resetStartupEnvForTests();
+
+  try {
+    const saved = await persistUpload(
+      "user_1",
+      "session_1",
+      new File(["payload"], "archive.7z", { type: "" }),
+    );
+
+    assert.equal(saved.mime, "application/octet-stream");
+    assert.equal(saved.size, "payload".length);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("persistUpload accepts common binary files without MIME restrictions", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mtc-upload-"));
+  process.env.ATTACHMENTS_FILE_ACCESS_ROOT = path.join(root, "container");
+  process.env.ATTACHMENTS_MESSAGE_PATH_ROOT = path.join(root, "host");
+  resetStartupEnvForTests();
+
+  try {
+    const saved = await persistUpload(
+      "user_1",
+      "session_1",
+      new File([Buffer.from([0xde, 0xad, 0xbe, 0xef])], "installer.exe", {
+        type: "application/x-msdownload",
+      }),
+    );
+
+    assert.equal(saved.mime, "application/x-msdownload");
+    assert.equal(saved.size, 4);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
