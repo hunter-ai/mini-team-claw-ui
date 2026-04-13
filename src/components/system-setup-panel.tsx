@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
@@ -52,6 +52,7 @@ export function SystemSetupPanel({
   mode: "setup" | "admin";
 }) {
   const [status, setStatus] = useState(initialStatus);
+  const [currentOrigin, setCurrentOrigin] = useState("");
   const [runtimeForm, setRuntimeForm] = useState({
     gatewayUrl: initialStatus.runtimeConfig?.gatewayUrl ?? "",
     gatewayToken: "",
@@ -68,6 +69,10 @@ export function SystemSetupPanel({
     password: "",
     openclawAgentId: "main",
   });
+
+  useEffect(() => {
+    setCurrentOrigin(window.location.origin);
+  }, []);
 
   async function localeFetch(input: string, init?: RequestInit) {
     const headers = new Headers(init?.headers);
@@ -270,6 +275,7 @@ export function SystemSetupPanel({
               className="ui-input"
               required
             />
+            <p className="ui-field-note">{messages.setup.gatewayUrlHint}</p>
           </label>
           <label className="space-y-2.5">
             <span className="text-sm font-medium">{messages.setup.gatewayToken}</span>
@@ -283,9 +289,7 @@ export function SystemSetupPanel({
               placeholder={messages.setup.gatewayTokenPlaceholder}
               required={!status.runtimeConfig?.gatewayTokenConfigured}
             />
-            <p className="ui-field-note">
-              {messages.setup.gatewayTokenHint}
-            </p>
+            <p className="ui-field-note">{messages.setup.gatewayTokenHint}</p>
           </label>
           <label className="space-y-2.5">
             <span className="text-sm font-medium">{messages.setup.appUrl}</span>
@@ -295,6 +299,15 @@ export function SystemSetupPanel({
               className="ui-input"
               placeholder={messages.setup.appUrlPlaceholder}
             />
+            <p className="ui-field-note">{messages.setup.appUrlHint}</p>
+            <button
+              type="button"
+              onClick={() => setRuntimeForm((current) => ({ ...current, appUrl: currentOrigin }))}
+              disabled={!currentOrigin}
+              className="ui-button-secondary ui-button-chip inline-flex font-medium"
+            >
+              {messages.setup.fillCurrentOrigin}
+            </button>
           </label>
           <button
             type="submit"
