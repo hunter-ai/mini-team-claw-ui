@@ -6,6 +6,7 @@ import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
 import { getChatSessionForUser } from "@/lib/session-service";
 import { persistUpload } from "@/lib/upload";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -60,11 +61,8 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : messages.attachments.uploadFailed,
-      },
-      { status: 400 },
-    );
+    return NextResponse.json(localizeError(messages, error, {
+      fallbackCode: "unknown",
+    }), { status: 400 });
   }
 }

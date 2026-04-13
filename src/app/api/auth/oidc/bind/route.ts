@@ -9,6 +9,7 @@ import {
   getPendingOidcBinding,
 } from "@/lib/oidc";
 import { getSetupStatus } from "@/lib/setup";
+import { errorFromCode } from "@/lib/user-facing-errors";
 
 const schema = z.object({
   username: z.string().min(1),
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   const messages = await getDictionary(locale);
   const setupStatus = await getSetupStatus();
   if (!setupStatus.isComplete) {
-    return NextResponse.json({ error: "Setup is not complete" }, { status: 503 });
+    return NextResponse.json(errorFromCode(messages, "setup_not_complete"), { status: 503 });
   }
 
   const pending = await getPendingOidcBinding();

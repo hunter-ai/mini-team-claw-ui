@@ -5,6 +5,7 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { OpenClawGatewayClient, OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import { getSetupStatus } from "@/lib/setup";
+import { errorFromCode, localizeError } from "@/lib/user-facing-errors";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -49,12 +50,18 @@ export async function POST(request: Request) {
     if (error instanceof OpenClawGatewayError) {
       if (error.detailCode === "PAIRING_REQUIRED") {
         const details = isObject(error.details) ? error.details : null;
+        const localized = errorFromCode(messages, "gateway_pairing_required", {
+          includeDiagnostic: true,
+          diagnostic: error.message,
+        });
         return NextResponse.json({
           status: "pairing_required",
-          message: error.message,
+          message: localized.error,
+          errorCode: localized.errorCode,
+          errorDiagnostic: localized.errorDiagnostic,
           pairing: {
             status: "pairing_required",
-            message: error.message,
+            message: localized.error,
             deviceId: readString(details?.deviceId) ?? null,
             lastPairedAt: readDateIso(details?.lastPairedAt) ?? null,
             pendingRequests: error.pairingRequest ? [error.pairingRequest] : [],
@@ -66,19 +73,40 @@ export async function POST(request: Request) {
         error.detailCode === "AUTH_TOKEN_MISMATCH" ||
         error.detailCode === "AUTH_DEVICE_TOKEN_MISMATCH"
       ) {
-        return NextResponse.json({ status: "auth_failed", message: error.message }, { status: 200 });
+        const localized = localizeError(messages, error, {
+          fallbackCode: "gateway_auth_failed",
+          includeDiagnostic: true,
+        });
+        return NextResponse.json({
+          status: "auth_failed",
+          message: localized.error,
+          errorCode: localized.errorCode,
+          errorDiagnostic: localized.errorDiagnostic,
+        }, { status: 200 });
       }
 
-      return NextResponse.json({ status: "unreachable", message: error.message }, { status: 200 });
+      const localized = localizeError(messages, error, {
+        fallbackCode: "gateway_unreachable",
+        includeDiagnostic: true,
+      });
+      return NextResponse.json({
+        status: "unreachable",
+        message: localized.error,
+        errorCode: localized.errorCode,
+        errorDiagnostic: localized.errorDiagnostic,
+      }, { status: 200 });
     }
 
-    return NextResponse.json(
-      {
-        status: "invalid_config",
-        message: error instanceof Error ? error.message : messages.chat.skillsConnectionFailed,
-      },
-      { status: 200 },
-    );
+    const localized = localizeError(messages, error, {
+      fallbackCode: "gateway_config_missing",
+      includeDiagnostic: true,
+    });
+    return NextResponse.json({
+      status: "invalid_config",
+      message: localized.error,
+      errorCode: localized.errorCode,
+      errorDiagnostic: localized.errorDiagnostic,
+    }, { status: 200 });
   } finally {
     await client.close().catch(() => undefined);
   }

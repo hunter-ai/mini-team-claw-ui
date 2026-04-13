@@ -5,6 +5,7 @@ import { createConversationExportJob } from "@/lib/admin-backup";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -28,10 +29,9 @@ export async function POST(request: Request) {
     const job = await createConversationExportJob();
     return NextResponse.json({ job });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : messages.adminBackup.exportFailed },
-      { status: 500 },
-    );
+    return NextResponse.json(localizeError(messages, error, {
+      fallbackCode: "backup_invalid_import",
+      includeDiagnostic: true,
+    }), { status: 500 });
   }
 }
-

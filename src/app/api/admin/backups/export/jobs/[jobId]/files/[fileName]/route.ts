@@ -4,6 +4,7 @@ import { getBackupJobFile } from "@/lib/admin-backup";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -29,9 +30,9 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : messages.adminBackup.exportFileNotFound },
-      { status: 404 },
-    );
+    return NextResponse.json(localizeError(messages, error, {
+      fallbackCode: "backup_file_missing",
+      includeDiagnostic: true,
+    }), { status: 404 });
   }
 }

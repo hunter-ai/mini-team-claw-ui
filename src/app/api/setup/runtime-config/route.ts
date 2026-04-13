@@ -10,6 +10,7 @@ import {
   validateRuntimeConfig,
 } from "@/lib/runtime-config";
 import { getSetupStatus } from "@/lib/setup";
+import { localizeError } from "@/lib/user-facing-errors";
 
 const payloadSchema = z.object({
   gatewayUrl: z.string(),
@@ -86,9 +87,9 @@ export async function PUT(request: Request) {
         : null,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : access.messages.auth.invalidPayload },
-      { status: 400 },
-    );
+    return NextResponse.json(localizeError(access.messages, error, {
+      fallbackCode: "gateway_config_missing",
+      includeDiagnostic: true,
+    }), { status: 400 });
   }
 }

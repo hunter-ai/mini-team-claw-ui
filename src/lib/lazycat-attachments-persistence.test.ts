@@ -22,6 +22,7 @@ async function buildPersistedUpload(root: string, name: string, content: string)
     hostPath: `/host/${name}.bin`,
     size: Buffer.byteLength(content),
     sha256: `${name}-sha`,
+    mime: "application/octet-stream",
   };
 }
 

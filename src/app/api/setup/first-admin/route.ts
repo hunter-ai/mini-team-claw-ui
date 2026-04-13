@@ -8,6 +8,7 @@ import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
 import { getSetupStatus } from "@/lib/setup";
+import { errorFromCode } from "@/lib/user-facing-errors";
 
 const createSchema = z.object({
   username: z.string().min(3),
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
     }
 
-    return NextResponse.json({ error: "An active admin already exists" }, { status: 409 });
+    return NextResponse.json(errorFromCode(messages, "active_admin_exists"), { status: 409 });
   }
 
   const payload = createSchema.safeParse(await request.json().catch(() => null));

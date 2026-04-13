@@ -13,6 +13,7 @@ import {
   toShareOwnerResponse,
   upsertSessionShare,
 } from "@/lib/session-share";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -111,14 +112,9 @@ export async function PUT(
       share: await toShareOwnerResponse(share, context.locale),
     });
   } catch (error) {
-    const errorMessage =
-      error instanceof Error && error.message === "Password is required"
-        ? context.messages.share.passwordRequired
-        : error instanceof Error
-          ? error.message
-          : context.messages.share.updateFailed;
-
-    return NextResponse.json({ error: errorMessage }, { status: 400 });
+    return NextResponse.json(localizeError(context.messages, error, {
+      fallbackCode: "unknown",
+    }), { status: 400 });
   }
 }
 

@@ -8,6 +8,7 @@ import { lazycatPickerSubmitDetailSchema } from "@/lib/lazycat-attachments";
 import { createLazycatAttachments } from "@/lib/lazycat-attachments-persistence";
 import { mapLazycatPickerDetailToAttachments } from "@/lib/lazycat-attachments.server";
 import { getChatSessionForUser } from "@/lib/session-service";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -51,11 +52,8 @@ export async function POST(request: Request) {
       attachments,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : messages.chat.lazycatEmptySelection,
-      },
-      { status: 400 },
-    );
+    return NextResponse.json(localizeError(messages, error, {
+      fallbackCode: "lazycat_invalid_selection",
+    }), { status: 400 });
   }
 }

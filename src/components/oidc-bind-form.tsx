@@ -33,9 +33,14 @@ export function OidcBindForm({
         [LOCALE_HEADER_NAME]: locale,
       },
       body: JSON.stringify({ username, password }),
-    });
+    }).catch(() => null);
 
     setLoading(false);
+
+    if (!response) {
+      setError(messages.common.networkError);
+      return;
+    }
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };

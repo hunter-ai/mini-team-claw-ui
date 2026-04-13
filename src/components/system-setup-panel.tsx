@@ -59,8 +59,11 @@ export function SystemSetupPanel({
     appUrl: initialStatus.runtimeConfig?.appUrl ?? "",
   });
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
+  const [runtimeDiagnostic, setRuntimeDiagnostic] = useState<string | null>(null);
   const [gatewayMessage, setGatewayMessage] = useState<string | null>(null);
+  const [gatewayDiagnostic, setGatewayDiagnostic] = useState<string | null>(null);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
+  const [adminDiagnostic, setAdminDiagnostic] = useState<string | null>(null);
   const [savingRuntime, setSavingRuntime] = useState(false);
   const [testingGateway, setTestingGateway] = useState(false);
   const [creatingAdmin, setCreatingAdmin] = useState(false);
@@ -96,6 +99,7 @@ export function SystemSetupPanel({
     event.preventDefault();
     setSavingRuntime(true);
     setRuntimeMessage(null);
+    setRuntimeDiagnostic(null);
 
     try {
       const response = await localeFetch("/api/setup/runtime-config", {
@@ -110,9 +114,13 @@ export function SystemSetupPanel({
         }),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+      };
       if (!response.ok) {
         setRuntimeMessage(payload.error ?? messages.setup.runtimeConfigSaveFailed);
+        setRuntimeDiagnostic(payload.errorDiagnostic ?? null);
         return;
       }
 
@@ -126,6 +134,7 @@ export function SystemSetupPanel({
   async function runGatewayTest() {
     setTestingGateway(true);
     setGatewayMessage(null);
+    setGatewayDiagnostic(null);
 
     try {
       const response = await localeFetch("/api/setup/gateway/test", {
@@ -134,6 +143,7 @@ export function SystemSetupPanel({
       const payload = (await response.json().catch(() => ({}))) as {
         status?: SetupStatus["gatewayStatus"];
         message?: string;
+        errorDiagnostic?: string;
       };
 
       await refreshStatus();
@@ -141,6 +151,7 @@ export function SystemSetupPanel({
         payload.message ??
           (payload.status ? gatewayStatusText(messages, payload.status) : messages.setup.gatewayTestFailed),
       );
+      setGatewayDiagnostic(payload.errorDiagnostic ?? null);
     } finally {
       setTestingGateway(false);
     }
@@ -150,6 +161,7 @@ export function SystemSetupPanel({
     event.preventDefault();
     setCreatingAdmin(true);
     setAdminMessage(null);
+    setAdminDiagnostic(null);
 
     try {
       const response = await localeFetch("/api/setup/first-admin", {
@@ -157,9 +169,13 @@ export function SystemSetupPanel({
         headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
         body: JSON.stringify(adminForm),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+      };
       if (!response.ok) {
         setAdminMessage(payload.error ?? messages.setup.firstAdminCreateFailed);
+        setAdminDiagnostic(payload.errorDiagnostic ?? null);
         return;
       }
 
@@ -318,7 +334,14 @@ export function SystemSetupPanel({
           </button>
         </form>
         {runtimeMessage ? (
-          <p className="mt-3 text-sm text-[color:var(--text-secondary)]">{runtimeMessage}</p>
+          <div className="mt-3 space-y-1">
+            <p className="text-sm text-[color:var(--text-secondary)]">{runtimeMessage}</p>
+            {runtimeDiagnostic ? (
+              <p className="text-xs text-[color:var(--text-quaternary)]">
+                {messages.common.diagnosticLabel}: {runtimeDiagnostic}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
@@ -333,7 +356,14 @@ export function SystemSetupPanel({
             {gatewayStatusText(messages, status.gatewayStatus)}
           </p>
           {gatewayMessage ? (
-            <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{gatewayMessage}</p>
+            <div className="mt-2 space-y-1">
+              <p className="text-sm text-[color:var(--text-secondary)]">{gatewayMessage}</p>
+              {gatewayDiagnostic ? (
+                <p className="text-xs text-[color:var(--text-quaternary)]">
+                  {messages.common.diagnosticLabel}: {gatewayDiagnostic}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="button"
@@ -448,7 +478,14 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
           </form>
         )}
         {adminMessage ? (
-          <p className="mt-3 text-sm text-[color:var(--text-secondary)]">{adminMessage}</p>
+          <div className="mt-3 space-y-1">
+            <p className="text-sm text-[color:var(--text-secondary)]">{adminMessage}</p>
+            {adminDiagnostic ? (
+              <p className="text-xs text-[color:var(--text-quaternary)]">
+                {messages.common.diagnosticLabel}: {adminDiagnostic}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </section>
     </div>

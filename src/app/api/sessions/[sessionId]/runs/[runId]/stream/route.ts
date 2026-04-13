@@ -4,6 +4,7 @@ import { chatRunManager } from "@/lib/chat-run-manager";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { getRequestLocale } from "@/lib/i18n/request-locale";
 import { getChatRunForUser, isTerminalChatRunStatus, listChatRunEventsAfter } from "@/lib/chat-run-service";
+import { localizeError } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -61,7 +62,7 @@ export async function GET(
         controller.enqueue(encoder.encode(encodeSse(payload)));
       };
       const sendSerializedEvent = (event: Awaited<ReturnType<typeof listChatRunEventsAfter>>[number]) => {
-        const payload = serializeChatRunEvent(event);
+        const payload = serializeChatRunEvent(event, messages);
         if (payload) {
           send(payload);
         }
@@ -186,7 +187,9 @@ export async function GET(
             type: "error",
             runId: run.id,
             seq: lastSeq,
-            error: error instanceof Error ? error.message : messages.sessions.failedToStartRun,
+            error: localizeError(messages, error, {
+              fallbackCode: "stream_failed",
+            }).error,
           });
           close("poll-error");
         } finally {

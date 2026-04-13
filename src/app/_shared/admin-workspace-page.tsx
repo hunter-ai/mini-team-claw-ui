@@ -2,10 +2,11 @@ import { AdminPageHeader } from "@/components/admin-page-header";
 import { SystemSetupPanel } from "@/components/system-setup-panel";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
-import { getSetupStatus } from "@/lib/setup";
+import { getSetupStatus, localizeSetupStatus } from "@/lib/setup";
 
 export async function AdminWorkspacePage({ locale }: { locale: Locale }) {
   const [messages, setupStatus] = await Promise.all([getDictionary(locale), getSetupStatus()]);
+  const localizedStatus = localizeSetupStatus(setupStatus, messages);
 
   return (
     <div className="space-y-6">
@@ -14,7 +15,7 @@ export async function AdminWorkspacePage({ locale }: { locale: Locale }) {
         title={messages.admin.workspacePageTitle}
         description={messages.admin.workspacePageDescription}
       />
-      <SystemSetupPanel locale={locale} messages={messages} initialStatus={setupStatus} mode="admin" />
+      <SystemSetupPanel locale={locale} messages={messages} initialStatus={localizedStatus} mode="admin" />
     </div>
   );
 }

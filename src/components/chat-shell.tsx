@@ -3432,10 +3432,10 @@ export function ChatShell({
     setBootstrapError(null);
 
     const request = (async () => {
-      const response = await localeFetch("/api/sessions", { method: "POST" }).catch((fetchError) => fetchError);
+      const response = await localeFetch("/api/sessions", { method: "POST" }).catch(() => null);
 
-      if (response instanceof Error) {
-        setBootstrapError(response.message);
+      if (!response) {
+        setBootstrapError(messages.common.networkError);
         return null;
       }
 
@@ -3457,7 +3457,7 @@ export function ChatShell({
 
     bootstrapPromiseRef.current = request;
     return request;
-  }, [initializeSessionState, localeFetch, messages.chat.failedToCreateSession]);
+  }, [initializeSessionState, localeFetch, messages.chat.failedToCreateSession, messages.common.networkError]);
 
   useEffect(() => {
     if (!skillsOpen) {
@@ -3970,9 +3970,9 @@ export function ChatShell({
     setShareLoading(true);
     setShareSubmitting(false);
 
-    const response = await localeFetch(`/api/sessions/${session.id}/share`).catch((fetchError) => fetchError);
-    if (response instanceof Error) {
-      setShareError(response.message);
+    const response = await localeFetch(`/api/sessions/${session.id}/share`).catch(() => null);
+    if (!response) {
+      setShareError(messages.common.networkError);
       setShareLoading(false);
       return;
     }
@@ -3983,7 +3983,7 @@ export function ChatShell({
         const payload = JSON.parse(rawText) as { error?: string };
         setShareError(payload.error ?? messages.chat.shareFailedToLoad);
       } catch {
-        setShareError(rawText || messages.chat.shareFailedToLoad);
+        setShareError(messages.chat.shareFailedToLoad);
       }
       setShareLoading(false);
       return;
@@ -3993,7 +3993,7 @@ export function ChatShell({
     setShareState(payload.share);
     setShareAccessMode(payload.share.accessMode ?? "PUBLIC");
     setShareLoading(false);
-  }, [localeFetch, messages.chat.shareFailedToLoad]);
+  }, [localeFetch, messages.chat.shareFailedToLoad, messages.common.networkError]);
 
   const closeRenameModal = useCallback(() => {
     if (renameSubmitting) {
@@ -4038,10 +4038,10 @@ export function ChatShell({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: normalizedTitle }),
-    }).catch((fetchError) => fetchError);
+    }).catch(() => null);
 
-    if (response instanceof Error) {
-      setRenameError(response.message);
+    if (!response) {
+      setRenameError(messages.common.networkError);
       setRenameSubmitting(false);
       return;
     }
@@ -4055,7 +4055,7 @@ export function ChatShell({
           const payload = JSON.parse(rawText) as { error?: string };
           errorMessage = payload.error ?? errorMessage;
         } catch {
-          errorMessage = rawText;
+          errorMessage = messages.chat.failedToRenameSession;
         }
       }
 
@@ -4095,10 +4095,10 @@ export function ChatShell({
         accessMode: shareAccessMode,
         password: sharePassword.trim() || undefined,
       }),
-    }).catch((fetchError) => fetchError);
+    }).catch(() => null);
 
-    if (response instanceof Error) {
-      setShareError(response.message);
+    if (!response) {
+      setShareError(messages.common.networkError);
       setShareSubmitting(false);
       return;
     }
@@ -4109,7 +4109,7 @@ export function ChatShell({
         const payload = JSON.parse(rawText) as { error?: string };
         setShareError(payload.error ?? messages.chat.shareFailedToUpdate);
       } catch {
-        setShareError(rawText || messages.chat.shareFailedToUpdate);
+        setShareError(messages.chat.shareFailedToUpdate);
       }
       setShareSubmitting(false);
       return;
@@ -4132,10 +4132,10 @@ export function ChatShell({
 
     const response = await localeFetch(`/api/sessions/${shareTargetSession.id}/share`, {
       method: "DELETE",
-    }).catch((fetchError) => fetchError);
+    }).catch(() => null);
 
-    if (response instanceof Error) {
-      setShareError(response.message);
+    if (!response) {
+      setShareError(messages.common.networkError);
       setShareSubmitting(false);
       return;
     }
@@ -4146,7 +4146,7 @@ export function ChatShell({
         const payload = JSON.parse(rawText) as { error?: string };
         setShareError(payload.error ?? messages.chat.shareFailedToUpdate);
       } catch {
-        setShareError(rawText || messages.chat.shareFailedToUpdate);
+        setShareError(messages.chat.shareFailedToUpdate);
       }
       setShareSubmitting(false);
       return;
@@ -4337,16 +4337,16 @@ export function ChatShell({
         skillKeys,
         clientRequestId,
       }),
-    }).catch((fetchError) => fetchError);
+    }).catch(() => null);
 
-    if (response instanceof Error) {
+    if (!response) {
       logChatShellDebug("[chat-debug][chat-shell] send failed before response", {
         sessionId: targetSessionId,
         clientRequestId,
-        error: response.message,
+        error: messages.common.networkError,
       });
       setSessionRunState(targetSessionId, "failed");
-      setErrorBySession((current) => ({ ...current, [targetSessionId]: response.message }));
+      setErrorBySession((current) => ({ ...current, [targetSessionId]: messages.common.networkError }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
       setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: selectedSkillSnapshots }));
@@ -4362,7 +4362,7 @@ export function ChatShell({
           const payload = JSON.parse(rawText) as { error?: string };
           errorMessage = payload.error ?? errorMessage;
         } catch {
-          errorMessage = rawText;
+          errorMessage = messages.chat.failedToSend;
         }
       }
 

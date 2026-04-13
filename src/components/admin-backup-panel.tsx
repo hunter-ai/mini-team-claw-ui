@@ -80,6 +80,7 @@ export function AdminBackupPanel({
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDiagnostic, setErrorDiagnostic] = useState<string | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
   const previewDescription = useMemo(() => {
@@ -111,8 +112,15 @@ export function AdminBackupPanel({
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(payload.error ?? messages.adminBackup.exportFailed);
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+      };
+      const nextError = new Error(payload.error ?? messages.adminBackup.exportFailed) as Error & {
+        diagnostic?: string;
+      };
+      nextError.diagnostic = payload.errorDiagnostic ?? undefined;
+      throw nextError;
     }
 
     const blob = await response.blob();
@@ -130,8 +138,15 @@ export function AdminBackupPanel({
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(payload.error ?? messages.adminBackup.exportFailed);
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+      };
+      const nextError = new Error(payload.error ?? messages.adminBackup.exportFailed) as Error & {
+        diagnostic?: string;
+      };
+      nextError.diagnostic = payload.errorDiagnostic ?? undefined;
+      throw nextError;
     }
 
     const blob = await response.blob();
@@ -157,8 +172,15 @@ export function AdminBackupPanel({
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(payload.error ?? messages.adminBackup.exportFailed);
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+      };
+      const nextError = new Error(payload.error ?? messages.adminBackup.exportFailed) as Error & {
+        diagnostic?: string;
+      };
+      nextError.diagnostic = payload.errorDiagnostic ?? undefined;
+      throw nextError;
     }
 
     const payload = (await response.json()) as { job: ConversationExportJob };
@@ -188,6 +210,7 @@ export function AdminBackupPanel({
   async function exportBackup(kind: "users" | "conversations") {
     setBusyKind(kind);
     setError(null);
+    setErrorDiagnostic(null);
     setMessage(null);
 
     try {
@@ -198,7 +221,9 @@ export function AdminBackupPanel({
         await exportConversationShards();
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : messages.adminBackup.exportFailed);
+      const typed = caughtError as Error & { diagnostic?: string };
+      setError(typed.message || messages.adminBackup.exportFailed);
+      setErrorDiagnostic(typed.diagnostic ?? null);
     } finally {
       setBusyKind(null);
     }
@@ -210,6 +235,7 @@ export function AdminBackupPanel({
     setSummary(null);
     setMessage(null);
     setError(null);
+    setErrorDiagnostic(null);
 
     if (inputFiles.length === 0) {
       return;
@@ -313,6 +339,7 @@ export function AdminBackupPanel({
 
     setImporting(true);
     setError(null);
+    setErrorDiagnostic(null);
     setMessage(null);
     setSummary(null);
 
@@ -328,15 +355,25 @@ export function AdminBackupPanel({
         body: formData,
       });
 
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; summary?: ImportSummary };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        errorDiagnostic?: string;
+        summary?: ImportSummary;
+      };
       if (!response.ok || !payload.summary) {
-        throw new Error(payload.error ?? messages.adminBackup.importFailed);
+        const nextError = new Error(payload.error ?? messages.adminBackup.importFailed) as Error & {
+          diagnostic?: string;
+        };
+        nextError.diagnostic = payload.errorDiagnostic ?? undefined;
+        throw nextError;
       }
 
       setSummary(payload.summary);
       setMessage(messages.adminBackup.importSuccess);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : messages.adminBackup.importFailed);
+      const typed = caughtError as Error & { diagnostic?: string };
+      setError(typed.message || messages.adminBackup.importFailed);
+      setErrorDiagnostic(typed.diagnostic ?? null);
     } finally {
       setImporting(false);
     }
@@ -431,7 +468,16 @@ export function AdminBackupPanel({
       </div>
 
       {message ? <p className="mt-4 text-sm text-[color:var(--accent-strong)]">{message}</p> : null}
-      {error ? <p className="mt-4 text-sm text-[color:var(--danger-strong)]">{error}</p> : null}
+      {error ? (
+        <div className="mt-4 space-y-1">
+          <p className="text-sm text-[color:var(--danger-strong)]">{error}</p>
+          {errorDiagnostic ? (
+            <p className="text-xs text-[color:var(--text-quaternary)]">
+              {messages.common.diagnosticLabel}: {errorDiagnostic}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {summary ? (
         <div className={`${sectionClass} mt-4 rounded-2xl p-4`}>

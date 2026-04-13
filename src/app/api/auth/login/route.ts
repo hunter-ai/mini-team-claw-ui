@@ -4,6 +4,7 @@ import { authenticate, createSession } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { getSetupStatus } from "@/lib/setup";
+import { errorFromCode } from "@/lib/user-facing-errors";
 
 const schema = z.object({
   username: z.string().min(1),
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
   const messages = await getDictionary(await resolveRequestLocale(request));
   const setupStatus = await getSetupStatus();
   if (!setupStatus.isComplete) {
-    return NextResponse.json({ error: "Setup is not complete" }, { status: 503 });
+    return NextResponse.json(errorFromCode(messages, "setup_not_complete"), { status: 503 });
   }
   const payload = schema.safeParse(await request.json().catch(() => null));
   if (!payload.success) {

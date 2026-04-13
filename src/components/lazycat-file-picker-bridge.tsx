@@ -59,14 +59,14 @@ export function LazycatFilePickerBridge({
 
         setReady(true);
         onAvailabilityChangeRef.current(true);
-      } catch (error) {
+      } catch {
         if (cancelled) {
           return;
         }
 
         setReady(false);
         onAvailabilityChangeRef.current(false);
-        onErrorRef.current(error instanceof Error ? error.message : messages.chat.lazycatUnavailable);
+        onErrorRef.current(messages.chat.lazycatUnavailable);
       }
     }
 

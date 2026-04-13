@@ -8,6 +8,7 @@ import { sendToOpenClaw } from "@/lib/openclaw/chat";
 import { OpenClawGatewayError } from "@/lib/openclaw/gateway";
 import { prisma } from "@/lib/prisma";
 import { parseSessionContextUsage } from "@/lib/session-context-usage";
+import { errorFromCode } from "@/lib/user-facing-errors";
 
 export const runtime = "nodejs";
 
@@ -90,12 +91,13 @@ export async function POST(
   } catch (error) {
     if (error instanceof OpenClawGatewayError && error.detailCode === "PAIRING_REQUIRED") {
       const details = isObject(error.details) ? error.details : null;
+      const localized = errorFromCode(messages, "gateway_pairing_required");
 
       return NextResponse.json({
         status: "pairing_required",
         pairing: {
           status: "pairing_required",
-          message: error.message,
+          message: localized.error,
           deviceId: readString(details?.deviceId) ?? null,
           lastPairedAt: readDateIso(details?.lastPairedAt) ?? null,
           pendingRequests: error.pairingRequest ? [error.pairingRequest] : [],

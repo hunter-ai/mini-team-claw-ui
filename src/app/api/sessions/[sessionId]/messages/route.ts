@@ -76,7 +76,7 @@ export async function GET(
     session: serializeSessionSummary(session),
     messages: toChatMessageViews(session.messages, session.attachments),
     activeRun: serializeActiveRun(session.runs[0] ?? null),
-    runHistory: session.runs.map((run) => serializeRunHistoryItem(run)),
+    runHistory: session.runs.map((run) => serializeRunHistoryItem(run, messages)),
   });
 }
 

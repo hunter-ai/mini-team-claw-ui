@@ -38,10 +38,10 @@ export function SharePasswordGate({
                   [LOCALE_HEADER_NAME]: locale,
                 },
                 body: JSON.stringify({ password }),
-              }).catch((fetchError) => fetchError);
+              }).catch(() => null);
 
-              if (response instanceof Error) {
-                setError(response.message);
+              if (!response) {
+                setError(messages.common.networkError);
                 return;
               }
 
@@ -51,7 +51,7 @@ export function SharePasswordGate({
                   const payload = JSON.parse(rawText) as { error?: string };
                   setError(payload.error ?? messages.share.passwordFailed);
                 } catch {
-                  setError(rawText || messages.share.passwordFailed);
+                  setError(messages.share.passwordFailed);
                 }
                 return;
               }

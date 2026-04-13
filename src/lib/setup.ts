@@ -2,10 +2,12 @@ import { redirect } from "next/navigation";
 import { UserRole } from "@prisma/client";
 import { getStartupEnv, getStartupEnvDiagnostics } from "@/lib/env";
 import { getCurrentUser } from "@/lib/auth";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/config";
 import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
 import { getResolvedRuntimeConfig } from "@/lib/runtime-config";
+import { localizePersistedGatewayMessage } from "@/lib/user-facing-errors";
 
 export type SetupGatewayStatus =
   | "untested"
@@ -127,6 +129,30 @@ export async function getSetupStatus(): Promise<SetupStatus> {
     gatewayStatus,
     pairing,
     envDiagnostics: getStartupEnvDiagnostics(),
+  };
+}
+
+export function localizeSetupStatus(status: SetupStatus, messages: Dictionary): SetupStatus {
+  if (!status.pairing) {
+    return status;
+  }
+
+  const pairing = status.pairing;
+
+  return {
+    ...status,
+    pairing: {
+      ...pairing,
+      message:
+        localizePersistedGatewayMessage(messages, pairing.status, pairing.message) ??
+        pairing.message,
+      pendingRequests: pairing.pendingRequests.map((request) => ({
+        ...request,
+        message:
+          localizePersistedGatewayMessage(messages, pairing.status, request.message) ??
+          request.message,
+      })),
+    },
   };
 }
 
