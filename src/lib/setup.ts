@@ -43,7 +43,10 @@ export type SetupStatus = {
   configSource: SetupConfigSource;
   runtimeConfig: {
     gatewayUrl: string;
+    gatewayAuthMode: "token" | "password";
     gatewayTokenConfigured: boolean;
+    gatewayPasswordConfigured: boolean;
+    gatewayCredentialConfigured: boolean;
     appUrl: string | null;
   } | null;
   gatewayStatus: SetupGatewayStatus;
@@ -106,12 +109,13 @@ export async function getSetupStatus(): Promise<SetupStatus> {
         ? ("pairing_required" as SetupGatewayStatus)
         : gatewayIdentity?.lastPairingStatus === "failed"
           ? gatewayIdentity.lastPairingMessage?.includes("token mismatch") ||
+            gatewayIdentity.lastPairingMessage?.includes("password mismatch") ||
             gatewayIdentity.lastPairingMessage?.includes("stale or revoked")
             ? ("auth_failed" as SetupGatewayStatus)
             : ("unreachable" as SetupGatewayStatus)
           : ("untested" as SetupGatewayStatus);
 
-  const hasRuntimeConfig = Boolean(runtimeConfig?.gatewayUrl && runtimeConfig.gatewayTokenConfigured);
+  const hasRuntimeConfig = Boolean(runtimeConfig?.gatewayUrl && runtimeConfig.gatewayCredentialConfigured);
 
   return {
     isComplete: activeAdminCount > 0 && hasRuntimeConfig && gatewayStatus === "healthy",
@@ -122,7 +126,10 @@ export async function getSetupStatus(): Promise<SetupStatus> {
     runtimeConfig: runtimeConfig
       ? {
           gatewayUrl: runtimeConfig.gatewayUrl,
+          gatewayAuthMode: runtimeConfig.gatewayAuthMode,
           gatewayTokenConfigured: runtimeConfig.gatewayTokenConfigured,
+          gatewayPasswordConfigured: runtimeConfig.gatewayPasswordConfigured,
+          gatewayCredentialConfigured: runtimeConfig.gatewayCredentialConfigured,
           appUrl: runtimeConfig.appUrl,
         }
       : null,

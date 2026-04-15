@@ -4,7 +4,7 @@ import {
   buildGatewayDeviceIdentity,
   persistGatewayPairingState,
   persistGatewayDeviceToken,
-  resolveGatewayAuthToken,
+  resolveGatewayAuthState,
 } from "@/lib/openclaw/device-identity";
 import { getGatewayRuntimeConfigOrThrow } from "@/lib/runtime-config";
 
@@ -117,6 +117,7 @@ type GatewayConnectProfile = {
       | {
           token?: string;
           deviceToken?: string;
+          password?: string;
         }
       | Record<string, never>;
     locale: string;
@@ -166,7 +167,7 @@ function summarizeError(error: unknown) {
   return { message: String(error) };
 }
 
-function buildConnectProfile(token: string): GatewayConnectProfile {
+function buildConnectProfile(): GatewayConnectProfile {
   return {
     socketOptions: {},
     connectParams: {
@@ -180,7 +181,7 @@ function buildConnectProfile(token: string): GatewayConnectProfile {
       },
       role: "operator",
       scopes: [...OPERATOR_SCOPES],
-      auth: token ? { token } : {},
+      auth: {},
       locale: "en-US",
       userAgent: "MiniTeamClawUI/0.1.0",
       caps: [...CONNECT_CAPS],
@@ -188,7 +189,7 @@ function buildConnectProfile(token: string): GatewayConnectProfile {
   };
 }
 
-function buildPairingAdminProfile(token: string): GatewayConnectProfile {
+function buildPairingAdminProfile(): GatewayConnectProfile {
   return {
     socketOptions: {},
     connectParams: {
@@ -202,7 +203,7 @@ function buildPairingAdminProfile(token: string): GatewayConnectProfile {
       },
       role: "operator",
       scopes: [...OPERATOR_SCOPES],
-      auth: token ? { token } : {},
+      auth: {},
       locale: "en-US",
       userAgent: "MiniTeamClawUI/0.1.0",
       caps: [...CONNECT_CAPS],
@@ -727,8 +728,7 @@ export class OpenClawGatewayClient {
     }
 
     const runtimeConfig = await getGatewayRuntimeConfigOrThrow();
-    const token = runtimeConfig.gatewayToken ?? "";
-    const profile = mode === "pairing-admin" ? buildPairingAdminProfile(token) : buildConnectProfile(token);
+    const profile = mode === "pairing-admin" ? buildPairingAdminProfile() : buildConnectProfile();
 
     try {
       this.ws = new WebSocket(runtimeConfig.gatewayUrl, profile.socketOptions);
@@ -745,23 +745,17 @@ export class OpenClawGatewayClient {
         throw new Error("[openclaw] connect failed: gateway did not provide a connect.challenge nonce");
       }
 
-      const authState = await resolveGatewayAuthToken(token);
+      const authState = await resolveGatewayAuthState(runtimeConfig);
       const device =
         mode === "pairing-admin"
           ? undefined
           : await (async () => {
-              if (!authState.tokenForSignature) {
-                throw new Error(
-                  "[openclaw] connect failed: no gateway auth token is available for device authentication",
-                );
-              }
-
               return buildGatewayDeviceIdentity({
                 clientId: profile.connectParams.client.id,
                 clientMode: profile.connectParams.client.mode,
                 role: profile.connectParams.role,
                 scopes: profile.connectParams.scopes,
-                token: authState.tokenForSignature,
+                token: authState.signatureToken,
                 nonce,
               });
             })();
@@ -783,7 +777,7 @@ export class OpenClawGatewayClient {
           detailCode,
           message: response.error?.message ?? "OpenClaw connect failed",
           gatewayUrl: runtimeConfig.gatewayUrl,
-          hasToken: Boolean(token),
+          gatewayAuthMode: runtimeConfig.gatewayAuthMode,
           client: profile.connectParams.client,
           scopes: profile.connectParams.scopes,
         };
@@ -829,7 +823,7 @@ export class OpenClawGatewayClient {
     } catch (error) {
       console.error("[openclaw] connect failed", {
         gatewayUrl: runtimeConfig.gatewayUrl,
-        hasToken: Boolean(token),
+        gatewayAuthMode: runtimeConfig.gatewayAuthMode,
         error: summarizeError(error),
       });
       throw error;
@@ -1319,6 +1313,14 @@ export class OpenClawGatewayClient {
 
     if (details.detailCode === "AUTH_TOKEN_MISMATCH") {
       return `[openclaw] connect rejected: gateway auth token mismatch. Check OPENCLAW_GATEWAY_TOKEN against the gateway configuration ${suffix}`;
+    }
+
+    if (details.detailCode === "AUTH_PASSWORD_MISMATCH") {
+      return `[openclaw] connect rejected: gateway auth password mismatch. Check OPENCLAW_GATEWAY_PASSWORD against the gateway configuration ${suffix}`;
+    }
+
+    if (details.detailCode === "AUTH_PASSWORD_NOT_CONFIGURED") {
+      return `[openclaw] connect rejected: gateway auth password is not configured on the gateway ${suffix}`;
     }
 
     return `[openclaw] connect rejected: ${details.message} ${suffix}`;

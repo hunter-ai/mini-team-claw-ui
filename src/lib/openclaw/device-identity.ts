@@ -35,7 +35,7 @@ type SigningParams = {
   clientMode: string;
   role: string;
   scopes: string[];
-  token: string;
+  token?: string | null;
   nonce: string;
 };
 
@@ -170,7 +170,7 @@ export async function buildGatewayDeviceIdentity(params: SigningParams): Promise
   const identity = await loadOrCreateStoredIdentity();
   const signedAt = Date.now();
   const scopes = params.scopes.join(",");
-  const payload = `v2|${identity.deviceId}|${params.clientId}|${params.clientMode}|${params.role}|${scopes}|${signedAt}|${params.token}|${params.nonce}`;
+  const payload = `v2|${identity.deviceId}|${params.clientId}|${params.clientMode}|${params.role}|${scopes}|${signedAt}|${params.token ?? ""}|${params.nonce}`;
 
   const privateKey = createPrivateKey({
     key: {
@@ -207,18 +207,29 @@ export async function getStoredGatewayIdentity() {
   return loadOrCreateStoredIdentity();
 }
 
-export async function resolveGatewayAuthToken(sharedToken: string) {
+export async function resolveGatewayAuthState(params: {
+  gatewayAuthMode: "token" | "password";
+  gatewayToken: string;
+  gatewayPassword: string;
+}) {
   const identity = await loadOrCreateStoredIdentity();
   if (identity.deviceToken) {
     return {
       auth: { deviceToken: identity.deviceToken },
-      tokenForSignature: identity.deviceToken,
+      signatureToken: identity.deviceToken,
+    };
+  }
+
+  if (params.gatewayAuthMode === "password") {
+    return {
+      auth: params.gatewayPassword ? { password: params.gatewayPassword } : {},
+      signatureToken: null,
     };
   }
 
   return {
-    auth: sharedToken ? { token: sharedToken } : {},
-    tokenForSignature: sharedToken,
+    auth: params.gatewayToken ? { token: params.gatewayToken } : {},
+    signatureToken: params.gatewayToken,
   };
 }
 

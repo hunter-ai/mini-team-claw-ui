@@ -15,8 +15,8 @@ test("errorFromCode returns localized setup copy", () => {
 });
 
 test("localizeError maps runtime config validation errors to user-facing copy", () => {
-  assert.deepEqual(localizeError(en, new Error("Gateway token is required")), {
-    error: "Enter the Gateway token before continuing.",
+  assert.deepEqual(localizeError(en, new Error("Gateway credential is required")), {
+    error: "Enter the Gateway credential before continuing.",
     errorCode: "gateway_token_required",
   });
 
@@ -39,6 +39,10 @@ test("localizePersistedGatewayMessage rewrites persisted pairing messages for th
   );
   assert.equal(
     localizePersistedGatewayMessage(en, "failed", "[openclaw] connect rejected: gateway auth token mismatch."),
-    "OpenClaw rejected the current token or device authorization.",
+    "OpenClaw rejected the current gateway credential or device authorization.",
+  );
+  assert.equal(
+    localizePersistedGatewayMessage(en, "failed", "[openclaw] connect rejected: gateway auth password mismatch."),
+    "OpenClaw rejected the current gateway credential or device authorization.",
   );
 });

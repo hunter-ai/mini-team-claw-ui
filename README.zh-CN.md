@@ -133,7 +133,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 说明：
 
-- 首次启动前请先修改 `.env.prod`，尤其是 `SESSION_SECRET`、`OPENCLAW_GATEWAY_URL` 和 `OPENCLAW_GATEWAY_TOKEN`。
+- 首次启动前请先修改 `.env.prod`，尤其是 `SESSION_SECRET`、`OPENCLAW_GATEWAY_URL`、`OPENCLAW_GATEWAY_AUTH_MODE`，以及对应的 gateway 凭证（`OPENCLAW_GATEWAY_TOKEN` 或 `OPENCLAW_GATEWAY_PASSWORD`）。
 - 生产模板默认使用 `ADMIN_BOOTSTRAP_MODE=ui`。完成 gateway 检查后，请在 setup 页面创建首个管理员。
 - 该 compose 文件默认把应用绑定到 `127.0.0.1:3000`。
 - PostgreSQL 数据会持久化到名为 `postgres_data` 的 Docker volume。
@@ -174,7 +174,9 @@ docker compose -f docker-compose.prod.yml up -d
 | `ATTACHMENTS_MESSAGE_PATH_ROOT` | 否 | 发送给 OpenClaw/龙虾时使用的附件路径根目录。默认值：`/srv/miniteamclaw/uploads`。 |
 | `LAZYCAT_SOURCE_FILE_ACCESS_ROOT` | 否 | UI 服务在复制前实际读取懒猫原文件时使用的根目录。使用懒猫附件时必须配置。 |
 | `OPENCLAW_GATEWAY_URL` | 是 | OpenClaw gateway 的 WebSocket 地址。 |
-| `OPENCLAW_GATEWAY_TOKEN` | 否 | 如果你的 OpenClaw 部署要求 token，可在这里配置。 |
+| `OPENCLAW_GATEWAY_AUTH_MODE` | 否 | Gateway 认证方式，可选值：`token`、`password`。默认 `token`。 |
+| `OPENCLAW_GATEWAY_TOKEN` | 否 | 当 `OPENCLAW_GATEWAY_AUTH_MODE=token` 时使用的 Gateway Token。 |
+| `OPENCLAW_GATEWAY_PASSWORD` | 否 | 当 `OPENCLAW_GATEWAY_AUTH_MODE=password` 时使用的 Gateway Password。 |
 | `MAX_UPLOAD_BYTES` | 否 | 单个附件大小上限，默认 `1073741824`（1 GiB）。 |
 | `OPENCLAW_VERBOSE_LEVEL` | 否 | Gateway 日志详细程度，可选值：`off`、`full`。 |
 | `APP_URL` | 否 | 在需要绝对地址时使用的应用外部访问地址。 |

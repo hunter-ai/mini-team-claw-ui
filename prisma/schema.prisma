@@ -221,7 +221,9 @@ model GatewayOperatorIdentity {
 model AppRuntimeConfig {
   id                    String   @id
   gatewayUrl            String
+  gatewayAuthMode       String   @default("token")
   gatewayTokenEncrypted String?
+  gatewayPasswordEncrypted String?
   appUrl                String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

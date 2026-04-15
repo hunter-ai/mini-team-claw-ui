@@ -71,6 +71,8 @@ export async function POST(request: Request) {
 
       if (
         error.detailCode === "AUTH_TOKEN_MISMATCH" ||
+        error.detailCode === "AUTH_PASSWORD_MISMATCH" ||
+        error.detailCode === "AUTH_PASSWORD_NOT_CONFIGURED" ||
         error.detailCode === "AUTH_DEVICE_TOKEN_MISMATCH"
       ) {
         const localized = localizeError(messages, error, {

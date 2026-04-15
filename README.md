@@ -134,7 +134,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 Notes:
 
-- Update `.env.prod` before first start, especially `SESSION_SECRET`, `OPENCLAW_GATEWAY_URL`, and `OPENCLAW_GATEWAY_TOKEN`.
+- Update `.env.prod` before first start, especially `SESSION_SECRET`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_AUTH_MODE`, and the matching gateway secret (`OPENCLAW_GATEWAY_TOKEN` or `OPENCLAW_GATEWAY_PASSWORD`).
 - Production defaults to `ADMIN_BOOTSTRAP_MODE=ui`. After the gateway check passes, create the first admin from the setup page.
 - The compose file binds the app to `127.0.0.1:3000` by default.
 - PostgreSQL data is persisted in the named Docker volume `postgres_data`.
@@ -175,7 +175,9 @@ The project validates environment variables in `src/lib/env.ts`.
 | `ATTACHMENTS_MESSAGE_PATH_ROOT` | No | Path root written into attachment paths sent to OpenClaw/Longxia. Default: `/srv/miniteamclaw/uploads`. |
 | `LAZYCAT_SOURCE_FILE_ACCESS_ROOT` | No | Real Lazycat source root as seen by the UI service before a selected file is copied into the attachment storage root. Required when using Lazycat attachments. |
 | `OPENCLAW_GATEWAY_URL` | Yes | WebSocket URL for the OpenClaw gateway. |
-| `OPENCLAW_GATEWAY_TOKEN` | No | Optional gateway token if your OpenClaw deployment requires it. |
+| `OPENCLAW_GATEWAY_AUTH_MODE` | No | Gateway auth mode. Supported values: `token`, `password`. Defaults to `token`. |
+| `OPENCLAW_GATEWAY_TOKEN` | No | Gateway token when `OPENCLAW_GATEWAY_AUTH_MODE=token`. |
+| `OPENCLAW_GATEWAY_PASSWORD` | No | Gateway password when `OPENCLAW_GATEWAY_AUTH_MODE=password`. |
 | `MAX_UPLOAD_BYTES` | No | Maximum attachment size in bytes. Default: `1073741824` (1 GiB). |
 | `OPENCLAW_VERBOSE_LEVEL` | No | Debug verbosity for gateway logging. Allowed values: `off`, `full`. |
 | `APP_URL` | No | Public app URL used where absolute URLs are needed. |

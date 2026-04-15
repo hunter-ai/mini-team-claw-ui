@@ -55,7 +55,9 @@ export function SystemSetupPanel({
   const [currentOrigin, setCurrentOrigin] = useState("");
   const [runtimeForm, setRuntimeForm] = useState({
     gatewayUrl: initialStatus.runtimeConfig?.gatewayUrl ?? "",
+    gatewayAuthMode: initialStatus.runtimeConfig?.gatewayAuthMode ?? "token",
     gatewayToken: "",
+    gatewayPassword: "",
     appUrl: initialStatus.runtimeConfig?.appUrl ?? "",
   });
   const [runtimeMessage, setRuntimeMessage] = useState<string | null>(null);
@@ -89,7 +91,9 @@ export function SystemSetupPanel({
     setStatus(payload);
     setRuntimeForm((current) => ({
       gatewayUrl: payload.runtimeConfig?.gatewayUrl ?? current.gatewayUrl,
+      gatewayAuthMode: payload.runtimeConfig?.gatewayAuthMode ?? current.gatewayAuthMode,
       gatewayToken: "",
+      gatewayPassword: "",
       appUrl: payload.runtimeConfig?.appUrl ?? "",
     }));
     return payload;
@@ -107,10 +111,15 @@ export function SystemSetupPanel({
         headers: { "Content-Type": "application/json", [LOCALE_HEADER_NAME]: locale },
         body: JSON.stringify({
           gatewayUrl: runtimeForm.gatewayUrl,
+          gatewayAuthMode: runtimeForm.gatewayAuthMode,
           gatewayToken: runtimeForm.gatewayToken,
+          gatewayPassword: runtimeForm.gatewayPassword,
           appUrl: runtimeForm.appUrl,
-          preserveGatewayToken:
-            status.runtimeConfig?.gatewayTokenConfigured === true && !runtimeForm.gatewayToken.trim(),
+          preserveGatewayCredential:
+            gatewayCredentialConfigured &&
+            !(runtimeForm.gatewayAuthMode === "password"
+              ? runtimeForm.gatewayPassword.trim()
+              : runtimeForm.gatewayToken.trim()),
         }),
       });
 
@@ -192,6 +201,22 @@ export function SystemSetupPanel({
 
   const loginHref = localizeHref(locale, "/login");
   const usesSeedBootstrap = status.adminBootstrapMode === "seed";
+  const gatewayCredentialConfigured =
+    runtimeForm.gatewayAuthMode === "password"
+      ? status.runtimeConfig?.gatewayPasswordConfigured === true
+      : status.runtimeConfig?.gatewayTokenConfigured === true;
+  const gatewaySecretLabel =
+    runtimeForm.gatewayAuthMode === "password" ? messages.setup.gatewayPassword : messages.setup.gatewayToken;
+  const gatewaySecretPlaceholder =
+    runtimeForm.gatewayAuthMode === "password"
+      ? messages.setup.gatewayPasswordPlaceholder
+      : messages.setup.gatewayTokenPlaceholder;
+  const gatewaySecretHint =
+    runtimeForm.gatewayAuthMode === "password"
+      ? messages.setup.gatewayPasswordHint
+      : messages.setup.gatewayTokenHint;
+  const gatewaySecretValue =
+    runtimeForm.gatewayAuthMode === "password" ? runtimeForm.gatewayPassword : runtimeForm.gatewayToken;
 
   return (
     <div className="space-y-5">
@@ -294,18 +319,40 @@ export function SystemSetupPanel({
             <p className="ui-field-note">{messages.setup.gatewayUrlHint}</p>
           </label>
           <label className="space-y-2.5">
-            <span className="text-sm font-medium">{messages.setup.gatewayToken}</span>
-            <input
-              type="password"
-              value={runtimeForm.gatewayToken}
+            <span className="text-sm font-medium">{messages.setup.gatewayAuthMode}</span>
+            <select
+              value={runtimeForm.gatewayAuthMode}
               onChange={(event) =>
-                setRuntimeForm((current) => ({ ...current, gatewayToken: event.target.value }))
+                setRuntimeForm((current) => ({
+                  ...current,
+                  gatewayAuthMode: event.target.value as "token" | "password",
+                }))
               }
               className="ui-input"
-              placeholder={messages.setup.gatewayTokenPlaceholder}
-              required={!status.runtimeConfig?.gatewayTokenConfigured}
+            >
+              <option value="token">{messages.setup.gatewayAuthModeToken}</option>
+              <option value="password">{messages.setup.gatewayAuthModePassword}</option>
+            </select>
+            <p className="ui-field-note">{messages.setup.gatewayAuthModeHint}</p>
+          </label>
+          <label className="space-y-2.5">
+            <span className="text-sm font-medium">{gatewaySecretLabel}</span>
+            <input
+              type="password"
+              value={gatewaySecretValue}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setRuntimeForm((current) =>
+                  current.gatewayAuthMode === "password"
+                    ? { ...current, gatewayPassword: nextValue }
+                    : { ...current, gatewayToken: nextValue },
+                );
+              }}
+              className="ui-input"
+              placeholder={gatewaySecretPlaceholder}
+              required={!gatewayCredentialConfigured}
             />
-            <p className="ui-field-note">{messages.setup.gatewayTokenHint}</p>
+            <p className="ui-field-note">{gatewaySecretHint}</p>
           </label>
           <label className="space-y-2.5">
             <span className="text-sm font-medium">{messages.setup.appUrl}</span>

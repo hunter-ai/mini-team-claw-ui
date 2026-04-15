@@ -14,9 +14,11 @@ import { localizeError } from "@/lib/user-facing-errors";
 
 const payloadSchema = z.object({
   gatewayUrl: z.string(),
+  gatewayAuthMode: z.enum(["token", "password"]).default("token"),
   gatewayToken: z.string().optional(),
+  gatewayPassword: z.string().optional(),
   appUrl: z.string().optional(),
-  preserveGatewayToken: z.boolean().optional(),
+  preserveGatewayCredential: z.boolean().optional(),
 });
 
 async function requireSetupEditor(request: Request) {
@@ -48,7 +50,10 @@ export async function GET(request: Request) {
     config: config
       ? {
           gatewayUrl: config.gatewayUrl,
+          gatewayAuthMode: config.gatewayAuthMode,
           gatewayTokenConfigured: config.gatewayTokenConfigured,
+          gatewayPasswordConfigured: config.gatewayPasswordConfigured,
+          gatewayCredentialConfigured: config.gatewayCredentialConfigured,
           appUrl: config.appUrl,
           source: config.source,
         }
@@ -68,19 +73,22 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const preserveGatewayToken = payload.data.preserveGatewayToken ?? false;
+    const preserveGatewayCredential = payload.data.preserveGatewayCredential ?? false;
     const parsed = validateRuntimeConfig(payload.data, {
-      requireGatewayToken: !preserveGatewayToken,
+      preserveGatewayCredential,
     });
     const saved = await saveRuntimeConfig(parsed, {
-      preserveGatewayToken,
+      preserveGatewayCredential,
     });
 
     return NextResponse.json({
       config: saved
         ? {
             gatewayUrl: saved.gatewayUrl,
+            gatewayAuthMode: saved.gatewayAuthMode,
             gatewayTokenConfigured: saved.gatewayTokenConfigured,
+            gatewayPasswordConfigured: saved.gatewayPasswordConfigured,
+            gatewayCredentialConfigured: saved.gatewayCredentialConfigured,
             appUrl: saved.appUrl,
             source: saved.source,
           }

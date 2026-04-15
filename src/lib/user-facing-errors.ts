@@ -132,7 +132,11 @@ export function inferErrorCode(error: unknown): UserFacingErrorCode {
       return "gateway_pairing_required";
     }
 
-    if (error.detailCode === "AUTH_TOKEN_MISMATCH") {
+    if (
+      error.detailCode === "AUTH_TOKEN_MISMATCH" ||
+      error.detailCode === "AUTH_PASSWORD_MISMATCH" ||
+      error.detailCode === "AUTH_PASSWORD_NOT_CONFIGURED"
+    ) {
       return "gateway_auth_failed";
     }
 
@@ -160,11 +164,15 @@ export function inferErrorCode(error: unknown): UserFacingErrorCode {
     return "gateway_url_invalid";
   }
 
-  if (message.includes("Gateway token is required")) {
+  if (message.includes("Gateway credential is required") || message.includes("Gateway token is required")) {
     return "gateway_token_required";
   }
 
-  if (lowerMessage.includes("token mismatch")) {
+  if (
+    lowerMessage.includes("token mismatch") ||
+    lowerMessage.includes("password mismatch") ||
+    lowerMessage.includes("password is not configured on the gateway")
+  ) {
     return "gateway_auth_failed";
   }
 
