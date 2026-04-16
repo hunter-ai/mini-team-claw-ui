@@ -2427,6 +2427,7 @@ export function ChatShell({
   );
   const [uploadingBySession, setUploadingBySession] = useState<Record<string, boolean>>({});
   const [errorBySession, setErrorBySession] = useState<Record<string, string | null>>({});
+  const [deviceAuthorizationExpiredBySession, setDeviceAuthorizationExpiredBySession] = useState<Record<string, boolean>>({});
   const [pairingBySession, setPairingBySession] = useState<Record<string, PairingState | null>>({});
   const [contextUsageBySession, setContextUsageBySession] = useState<Record<string, SessionContextUsageState>>({});
   const [contextLoadingBySession, setContextLoadingBySession] = useState<Record<string, boolean>>({});
@@ -2522,6 +2523,9 @@ export function ChatShell({
   const loading = activeSessionId ? isRunBusy(runStateBySession[activeSessionId] ?? "idle") : false;
   const uploading = activeSessionId ? uploadingBySession[activeSessionId] ?? false : false;
   const error = activeSessionId ? errorBySession[activeSessionId] ?? null : null;
+  const deviceAuthorizationExpired = activeSessionId
+    ? deviceAuthorizationExpiredBySession[activeSessionId] ?? false
+    : false;
   const pairing = activeSessionId ? pairingBySession[activeSessionId] ?? null : null;
   const contextUsage = activeSessionId ? contextUsageBySession[activeSessionId]?.usage ?? null : null;
   const contextLoading = activeSessionId ? contextLoadingBySession[activeSessionId] ?? false : false;
@@ -2543,6 +2547,7 @@ export function ChatShell({
 
     return shareState.shareUrl;
   }, [shareState?.shareUrl]);
+  const workspaceSettingsHref = localizeHref(locale, "/admin/workspace");
   const sortedSkills = useMemo(
     () =>
       skills
@@ -2863,6 +2868,7 @@ export function ChatShell({
       [session.id]: options?.composerText ?? current[session.id] ?? "",
     }));
     setPairingBySession((current) => ({ ...current, [session.id]: null }));
+    setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [session.id]: false }));
     setErrorBySession((current) => ({ ...current, [session.id]: null }));
     setShowScrollToBottom(false);
     shouldSnapMessagesToBottomRef.current = true;
@@ -2928,6 +2934,7 @@ export function ChatShell({
         if (payload.status === "pairing_required" && payload.pairing) {
           const pairingState = payload.pairing;
           setPairingBySession((current) => ({ ...current, [sessionId]: pairingState }));
+          setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
           setContextUsageBySession((current) => ({
             ...current,
             [sessionId]: {
@@ -2940,6 +2947,7 @@ export function ChatShell({
 
         if (payload.status === "ok" && payload.usage) {
           setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+          setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
           const nextUsage = payload.usage;
           setContextUsageBySession((current) => ({
             ...current,
@@ -3200,12 +3208,15 @@ export function ChatShell({
         setSessionRunState(sessionId, "completed");
         setErrorBySession((current) => ({ ...current, [sessionId]: null }));
         setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+        setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       } else if (payload.type === "aborted") {
         setSessionRunState(sessionId, "aborted");
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.reason }));
+        setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       } else if (payload.type === "pairing_required") {
         setSessionRunState(sessionId, "failed");
         setPairingBySession((current) => ({ ...current, [sessionId]: payload.pairing }));
+        setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
         setContextUsageBySession((current) => ({
           ...current,
           [sessionId]: {
@@ -3217,6 +3228,10 @@ export function ChatShell({
       } else {
         setSessionRunState(sessionId, "failed");
         setErrorBySession((current) => ({ ...current, [sessionId]: payload.error }));
+        setDeviceAuthorizationExpiredBySession((current) => ({
+          ...current,
+          [sessionId]: payload.errorCode === "gateway_device_token_expired",
+        }));
       }
 
       const activityEntry = buildRunActivityEntryFromEvent(payload);
@@ -3305,6 +3320,7 @@ export function ChatShell({
 
     if (clearError) {
       setErrorBySession((current) => ({ ...current, [sessionId]: null }));
+      setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
     }
 
     const response = await localeFetch(`/api/sessions/${sessionId}/messages`, {
@@ -3313,6 +3329,7 @@ export function ChatShell({
 
     if (!response.ok) {
       setErrorBySession((current) => ({ ...current, [sessionId]: messages.chat.failedToLoadSession }));
+      setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       return;
     }
 
@@ -3350,6 +3367,7 @@ export function ChatShell({
 
     if (!nextActiveRun) {
       setPairingBySession((current) => ({ ...current, [sessionId]: null }));
+      setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       const contextState = contextUsageBySession[sessionId];
       if (payload.session.status !== "ARCHIVED" && (!contextState || contextState.status === "idle")) {
         void refreshSessionContext(sessionId);
@@ -4322,6 +4340,7 @@ export function ChatShell({
     setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: [] }));
     setSessionRunState(targetSessionId, "starting");
     setErrorBySession((current) => ({ ...current, [targetSessionId]: null }));
+    setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [targetSessionId]: false }));
     setPairingBySession((current) => ({ ...current, [targetSessionId]: null }));
     updateActiveRun(targetSessionId, optimisticRun);
     shouldSnapMessagesToBottomRef.current = true;
@@ -5104,6 +5123,27 @@ export function ChatShell({
                 <p className="ui-field-note mt-1.5 text-[color:var(--text-secondary)]">
                   {messages.chat.pairingDescription}
                 </p>
+              </div>
+            ) : null}
+
+            {deviceAuthorizationExpired && !pairing ? (
+              <div className="max-w-[96ch] rounded-[0.95rem] border border-[color:var(--border-strong)] bg-[color:var(--surface-subtle)] px-3 py-3 text-[color:var(--text-primary)] sm:px-4 sm:py-3">
+                <p className="text-sm font-semibold">{messages.chat.deviceAuthorizationExpiredTitle}</p>
+                <p className="ui-field-note mt-1.5 text-[color:var(--text-secondary)]">
+                  {messages.chat.deviceAuthorizationExpiredDescription}
+                </p>
+                {user.role === "ADMIN" ? (
+                  <Link
+                    href={workspaceSettingsHref}
+                    className="ui-button-secondary ui-button-chip mt-3 inline-flex font-medium"
+                  >
+                    {messages.chat.deviceAuthorizationExpiredAdminAction}
+                  </Link>
+                ) : (
+                  <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+                    {messages.chat.deviceAuthorizationExpiredMemberAction}
+                  </p>
+                )}
               </div>
             ) : null}
 

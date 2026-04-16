@@ -64,6 +64,8 @@ export function SystemSetupPanel({
   const [runtimeDiagnostic, setRuntimeDiagnostic] = useState<string | null>(null);
   const [gatewayMessage, setGatewayMessage] = useState<string | null>(null);
   const [gatewayDiagnostic, setGatewayDiagnostic] = useState<string | null>(null);
+  const [resettingDeviceToken, setResettingDeviceToken] = useState(false);
+  const [resetDeviceDialogOpen, setResetDeviceDialogOpen] = useState(false);
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [adminDiagnostic, setAdminDiagnostic] = useState<string | null>(null);
   const [savingRuntime, setSavingRuntime] = useState(false);
@@ -166,6 +168,39 @@ export function SystemSetupPanel({
     }
   }
 
+  async function resetGatewayDeviceToken() {
+    setResettingDeviceToken(true);
+    setGatewayMessage(null);
+    setGatewayDiagnostic(null);
+
+    try {
+      const response = await localeFetch("/api/setup/gateway/reset-device-token", {
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        status?: SetupStatus["gatewayStatus"];
+        message?: string;
+        errorDiagnostic?: string;
+      };
+
+      await refreshStatus();
+      setGatewayMessage(
+        payload.message ??
+          (payload.status === "pairing_required"
+            ? messages.setup.gatewayDeviceResetPendingApproval
+            : payload.status === "healthy"
+              ? messages.setup.gatewayDeviceResetSucceeded
+              : payload.status
+                ? gatewayStatusText(messages, payload.status)
+                : messages.setup.gatewayDeviceResetFailed),
+      );
+      setGatewayDiagnostic(payload.errorDiagnostic ?? null);
+      setResetDeviceDialogOpen(false);
+    } finally {
+      setResettingDeviceToken(false);
+    }
+  }
+
   async function createFirstAdmin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreatingAdmin(true);
@@ -217,6 +252,53 @@ export function SystemSetupPanel({
       : messages.setup.gatewayTokenHint;
   const gatewaySecretValue =
     runtimeForm.gatewayAuthMode === "password" ? runtimeForm.gatewayPassword : runtimeForm.gatewayToken;
+  const canResetDeviceAuthorization = status.gatewayRemediation?.action === "reset_device_token";
+
+  const resetDeviceDialog = resetDeviceDialogOpen ? (
+    <div className="ui-overlay fixed inset-0 z-40 flex items-end justify-center px-4 py-4 sm:items-center">
+      <button
+        type="button"
+        aria-label={messages.common.cancel}
+        onClick={() => {
+          if (!resettingDeviceToken) {
+            setResetDeviceDialogOpen(false);
+          }
+        }}
+        className="absolute inset-0"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-device-token-modal-title"
+        className="ui-card ui-dialog relative z-10 w-full max-w-md"
+      >
+        <div className="mb-4">
+          <p id="reset-device-token-modal-title" className="text-sm font-semibold text-[color:var(--text-primary)]">
+            {messages.setup.gatewayDeviceResetConfirmTitle}
+          </p>
+          <p className="ui-field-note mt-1">{messages.setup.gatewayDeviceResetConfirmDescription}</p>
+        </div>
+        <div className="ui-dialog-actions">
+          <button
+            type="button"
+            onClick={() => setResetDeviceDialogOpen(false)}
+            disabled={resettingDeviceToken}
+            className="ui-button-secondary ui-button-chip font-medium disabled:cursor-not-allowed"
+          >
+            {messages.common.cancel}
+          </button>
+          <button
+            type="button"
+            onClick={() => void resetGatewayDeviceToken()}
+            disabled={resettingDeviceToken}
+            className="ui-button-primary ui-button-chip font-semibold disabled:cursor-not-allowed"
+          >
+            {resettingDeviceToken ? messages.common.loading : messages.setup.gatewayDeviceResetConfirmAction}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-5">
@@ -415,7 +497,7 @@ export function SystemSetupPanel({
           <button
             type="button"
             onClick={runGatewayTest}
-            disabled={testingGateway}
+            disabled={testingGateway || resettingDeviceToken}
             className="ui-button-secondary ui-button-chip mt-4 font-medium"
           >
             {testingGateway
@@ -425,6 +507,21 @@ export function SystemSetupPanel({
                 : messages.setup.gatewayTestAction}
           </button>
         </div>
+
+        {canResetDeviceAuthorization ? (
+          <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
+            <p className="text-sm font-medium text-[color:var(--text-primary)]">{messages.setup.gatewayDeviceResetTitle}</p>
+            <p className="mt-2 text-sm text-[color:var(--text-secondary)]">{messages.setup.gatewayDeviceResetDescription}</p>
+            <button
+              type="button"
+              onClick={() => setResetDeviceDialogOpen(true)}
+              disabled={testingGateway || resettingDeviceToken}
+              className="ui-button-secondary ui-button-chip mt-4 font-medium disabled:cursor-not-allowed"
+            >
+              {resettingDeviceToken ? messages.common.loading : messages.setup.gatewayDeviceResetAction}
+            </button>
+          </div>
+        ) : null}
 
         {status.pairing ? (
           <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-4 py-4">
@@ -535,6 +632,7 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
           </div>
         ) : null}
       </section>
+      {resetDeviceDialog}
     </div>
   );
 }

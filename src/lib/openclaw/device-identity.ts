@@ -261,6 +261,25 @@ export async function persistGatewayDeviceToken(auth: HelloOkAuth | undefined) {
   });
 }
 
+export async function clearGatewayDeviceToken() {
+  await loadOrCreateStoredIdentity();
+  await prisma.gatewayOperatorIdentity.update({
+    where: { id: IDENTITY_ROW_ID },
+    data: {
+      deviceTokenEncrypted: null,
+      tokenScopes: [],
+      lastPairingStatus: null,
+      lastPairingMessage: null,
+      lastPairingRequestId: null,
+      lastPairingRequestedAt: null,
+      lastRequestedScopes: [],
+      lastPairingClientId: null,
+      lastPairingClientMode: null,
+      lastPairingClientPlatform: null,
+    },
+  });
+}
+
 export async function persistGatewayPairingState(input: PersistGatewayPairingStateInput) {
   await loadOrCreateStoredIdentity();
   await prisma.gatewayOperatorIdentity.update({

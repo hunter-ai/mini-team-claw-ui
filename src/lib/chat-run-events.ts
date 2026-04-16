@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { Dictionary } from "@/lib/i18n/dictionary";
+import type { UserFacingErrorCode } from "@/lib/user-facing-errors";
 import { errorFromCode, inferErrorCode } from "@/lib/user-facing-errors";
 
 export type ClientAssistantRenderMode = "markdown" | "plain_text";
@@ -87,6 +88,7 @@ export type ClientChatRunEvent =
       seq: number;
       type: "error";
       error: string;
+      errorCode: UserFacingErrorCode;
       createdAt: string;
     }
   | {
@@ -426,6 +428,10 @@ export function serializeChatRunEvent(event: EventRecord, messages?: Dictionary)
     seq: event.seq,
     type: "error",
     error: localizedError,
+    errorCode:
+      typeof payload?.errorCode === "string"
+        ? (payload.errorCode as UserFacingErrorCode)
+        : inferErrorCode(new Error(typeof payload?.error === "string" ? payload.error : "Unknown chat run error")),
     createdAt,
   };
 }

@@ -7,6 +7,8 @@ import type { Locale } from "@/lib/i18n/config";
 import { localizeHref } from "@/lib/i18n/routing";
 import { prisma } from "@/lib/prisma";
 import { getResolvedRuntimeConfig } from "@/lib/runtime-config";
+import type { GatewayRemediation } from "@/lib/openclaw/gateway-remediation";
+import { inferGatewayRemediation } from "@/lib/openclaw/gateway-remediation";
 import { localizePersistedGatewayMessage } from "@/lib/user-facing-errors";
 
 export type SetupGatewayStatus =
@@ -50,6 +52,7 @@ export type SetupStatus = {
     appUrl: string | null;
   } | null;
   gatewayStatus: SetupGatewayStatus;
+  gatewayRemediation: GatewayRemediation;
   pairing: SetupPairingState;
   envDiagnostics: ReturnType<typeof getStartupEnvDiagnostics>;
 };
@@ -113,7 +116,11 @@ export async function getSetupStatus(): Promise<SetupStatus> {
             gatewayIdentity.lastPairingMessage?.includes("stale or revoked")
             ? ("auth_failed" as SetupGatewayStatus)
             : ("unreachable" as SetupGatewayStatus)
-          : ("untested" as SetupGatewayStatus);
+        : ("untested" as SetupGatewayStatus);
+  const gatewayRemediation = inferGatewayRemediation(
+    gatewayIdentity?.lastPairingStatus,
+    gatewayIdentity?.lastPairingMessage,
+  );
 
   const hasRuntimeConfig = Boolean(runtimeConfig?.gatewayUrl && runtimeConfig.gatewayCredentialConfigured);
 
@@ -134,6 +141,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
         }
       : null,
     gatewayStatus,
+    gatewayRemediation,
     pairing,
     envDiagnostics: getStartupEnvDiagnostics(),
   };

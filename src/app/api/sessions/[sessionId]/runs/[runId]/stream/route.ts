@@ -177,6 +177,9 @@ export async function GET(
             close(`poll:${latestRun.status}`);
           }
         } catch (error) {
+          const localized = localizeError(messages, error, {
+            fallbackCode: "stream_failed",
+          });
           logStreamDebug("[chat-debug][stream] poll failed", {
             sessionId,
             runId: run.id,
@@ -187,9 +190,8 @@ export async function GET(
             type: "error",
             runId: run.id,
             seq: lastSeq,
-            error: localizeError(messages, error, {
-              fallbackCode: "stream_failed",
-            }).error,
+            error: localized.error,
+            errorCode: localized.errorCode,
           });
           close("poll-error");
         } finally {

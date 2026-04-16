@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { GatewayToolEvent } from "@/lib/openclaw/gateway";
 import { normalizeSessionTitle } from "@/lib/session-service";
 import type { SelectedSkillSnapshot } from "@/lib/skills";
+import { inferErrorCode } from "@/lib/user-facing-errors";
 
 export const ACTIVE_CHAT_RUN_STATUSES = [ChatRunStatus.STARTING, ChatRunStatus.STREAMING] as const;
 export const TERMINAL_CHAT_RUN_STATUSES = [
@@ -484,7 +485,10 @@ export async function markChatRunFailed(runId: string, errorMessage: string) {
   return appendChatRunEvent({
     runId,
     type: "error",
-    payloadJson: { error: errorMessage },
+    payloadJson: {
+      error: errorMessage,
+      errorCode: inferErrorCode(new Error(errorMessage)),
+    },
     status: ChatRunStatus.FAILED,
     errorMessage,
     endedAt: new Date(),
