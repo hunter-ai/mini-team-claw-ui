@@ -89,6 +89,11 @@ type SessionRun = {
   updatedAt: string;
 };
 
+type SessionErrorState = {
+  message: string;
+  diagnostic: string | null;
+};
+
 type Session = {
   id: string;
   title: string;
@@ -108,6 +113,7 @@ type SessionShare = {
 type PairingState = {
   status: "pairing_required";
   message: string;
+  diagnostic: string | null;
   deviceId: string | null;
   lastPairedAt: string | null;
   pendingRequests: Array<{
@@ -474,6 +480,28 @@ function truncateText(value: string, maxLength = 240) {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
 }
 
+function normalizeDiagnostic(message: string | null | undefined, diagnostic: string | null | undefined) {
+  if (!diagnostic) {
+    return null;
+  }
+
+  return diagnostic.trim() === (message ?? "").trim() ? null : diagnostic;
+}
+
+function createSessionErrorState(
+  message: string | null | undefined,
+  diagnostic?: string | null,
+): SessionErrorState | null {
+  if (!message) {
+    return null;
+  }
+
+  return {
+    message,
+    diagnostic: normalizeDiagnostic(message, diagnostic),
+  };
+}
+
 function getActivityEntryRenderKey(entry: ClientRunActivityEntry) {
   if (entry.kind === "tool") {
     return entry.tool.callId ?? entry.tool.key ?? entry.key;
@@ -810,6 +838,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       phase: "started",
       title: "",
       detail: null,
+      diagnostic: null,
     };
   }
 
@@ -823,6 +852,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       phase: "completed",
       title: "",
       detail: null,
+      diagnostic: null,
     };
   }
 
@@ -836,6 +866,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       phase: "aborted",
       title: "",
       detail: payload.reason,
+      diagnostic: null,
     };
   }
 
@@ -849,6 +880,7 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       phase: "pairing_required",
       title: "",
       detail: payload.pairing.message,
+      diagnostic: normalizeDiagnostic(payload.pairing.message, payload.pairing.diagnostic),
     };
   }
 
@@ -862,10 +894,34 @@ function buildRunActivityEntryFromEvent(payload: ClientChatRunEvent): ClientRunA
       phase: "failed",
       title: "",
       detail: payload.error,
+      diagnostic: normalizeDiagnostic(payload.error, payload.errorDiagnostic),
     };
   }
 
   return null;
+}
+
+function ErrorDiagnosticDetails({
+  messages,
+  diagnostic,
+}: {
+  messages: Dictionary;
+  diagnostic: string | null;
+}) {
+  if (!diagnostic) {
+    return null;
+  }
+
+  return (
+    <details className="mt-2 rounded-[0.65rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-panel-strong)] px-2.5 py-2">
+      <summary className="cursor-pointer list-none text-[11px] font-medium text-[color:var(--text-primary)]">
+        {messages.common.diagnosticLabel}
+      </summary>
+      <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] leading-5 text-[color:var(--text-tertiary)]">
+        {diagnostic}
+      </pre>
+    </details>
+  );
 }
 
 function AssistantTextBlock({
@@ -953,6 +1009,7 @@ function AssistantLifecycleNote({
       {entry.detail ? (
         <p className="mt-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">{truncateText(entry.detail, 260)}</p>
       ) : null}
+      <ErrorDiagnosticDetails messages={messages} diagnostic={entry.diagnostic} />
     </div>
   );
 }
@@ -2426,7 +2483,7 @@ export function ChatShell({
     initialActiveSessionId && initialActiveRun ? { [initialActiveSessionId]: initialActiveRun } : {},
   );
   const [uploadingBySession, setUploadingBySession] = useState<Record<string, boolean>>({});
-  const [errorBySession, setErrorBySession] = useState<Record<string, string | null>>({});
+  const [errorBySession, setErrorBySession] = useState<Record<string, SessionErrorState | null>>({});
   const [deviceAuthorizationExpiredBySession, setDeviceAuthorizationExpiredBySession] = useState<Record<string, boolean>>({});
   const [pairingBySession, setPairingBySession] = useState<Record<string, PairingState | null>>({});
   const [contextUsageBySession, setContextUsageBySession] = useState<Record<string, SessionContextUsageState>>({});
@@ -2613,6 +2670,7 @@ export function ChatShell({
           status: activeRun.status,
           draftAssistantContent: activeRun.draftAssistantContent,
           errorMessage: activeRun.errorMessage,
+          errorDiagnostic: null,
           startedAt: activeRun.startedAt,
           updatedAt: activeRun.updatedAt,
           steps: [],
@@ -3211,7 +3269,10 @@ export function ChatShell({
         setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       } else if (payload.type === "aborted") {
         setSessionRunState(sessionId, "aborted");
-        setErrorBySession((current) => ({ ...current, [sessionId]: payload.reason }));
+        setErrorBySession((current) => ({
+          ...current,
+          [sessionId]: createSessionErrorState(payload.reason),
+        }));
         setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       } else if (payload.type === "pairing_required") {
         setSessionRunState(sessionId, "failed");
@@ -3224,10 +3285,16 @@ export function ChatShell({
             usage: null,
           },
         }));
-        setErrorBySession((current) => ({ ...current, [sessionId]: payload.pairing.message }));
+        setErrorBySession((current) => ({
+          ...current,
+          [sessionId]: createSessionErrorState(payload.pairing.message, payload.pairing.diagnostic),
+        }));
       } else {
         setSessionRunState(sessionId, "failed");
-        setErrorBySession((current) => ({ ...current, [sessionId]: payload.error }));
+        setErrorBySession((current) => ({
+          ...current,
+          [sessionId]: createSessionErrorState(payload.error, payload.errorDiagnostic),
+        }));
         setDeviceAuthorizationExpiredBySession((current) => ({
           ...current,
           [sessionId]: payload.errorCode === "gateway_device_token_expired",
@@ -3283,7 +3350,7 @@ export function ChatShell({
         setSessionRunState(sessionId, "failed");
         setErrorBySession((current) => ({
           ...current,
-          [sessionId]: messages.chat.connectionLost,
+          [sessionId]: createSessionErrorState(messages.chat.connectionLost),
         }));
         return;
       }
@@ -3328,7 +3395,10 @@ export function ChatShell({
     });
 
     if (!response.ok) {
-      setErrorBySession((current) => ({ ...current, [sessionId]: messages.chat.failedToLoadSession }));
+      setErrorBySession((current) => ({
+        ...current,
+        [sessionId]: createSessionErrorState(messages.chat.failedToLoadSession),
+      }));
       setDeviceAuthorizationExpiredBySession((current) => ({ ...current, [sessionId]: false }));
       return;
     }
@@ -3955,7 +4025,10 @@ export function ChatShell({
     const response = await localeFetch("/api/sessions", { method: "POST" });
     if (!response.ok) {
       if (activeSessionId) {
-        setErrorBySession((current) => ({ ...current, [activeSessionId]: messages.chat.failedToCreateSession }));
+        setErrorBySession((current) => ({
+          ...current,
+          [activeSessionId]: createSessionErrorState(messages.chat.failedToCreateSession),
+        }));
       }
       return;
     }
@@ -4201,7 +4274,9 @@ export function ChatShell({
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
         setErrorBySession((current) => ({
           ...current,
-          [activeSessionId]: payload.error ?? t(messages.chat.uploadFailedForFile, { fileName: file.name }),
+          [activeSessionId]: createSessionErrorState(
+            payload.error ?? t(messages.chat.uploadFailedForFile, { fileName: file.name }),
+          ),
         }));
         continue;
       }
@@ -4240,7 +4315,7 @@ export function ChatShell({
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
       setErrorBySession((current) => ({
         ...current,
-        [activeSessionId]: payload.error ?? messages.chat.lazycatEmptySelection,
+        [activeSessionId]: createSessionErrorState(payload.error ?? messages.chat.lazycatEmptySelection),
       }));
       setUploadingBySession((current) => ({ ...current, [activeSessionId]: false }));
       return;
@@ -4268,7 +4343,7 @@ export function ChatShell({
 
     setErrorBySession((current) => ({
       ...current,
-      [activeSessionId]: message || messages.chat.lazycatUnavailable,
+      [activeSessionId]: createSessionErrorState(message || messages.chat.lazycatUnavailable),
     }));
   }, [activeSessionId, messages.chat.lazycatUnavailable]);
 
@@ -4365,7 +4440,10 @@ export function ChatShell({
         error: messages.common.networkError,
       });
       setSessionRunState(targetSessionId, "failed");
-      setErrorBySession((current) => ({ ...current, [targetSessionId]: messages.common.networkError }));
+      setErrorBySession((current) => ({
+        ...current,
+        [targetSessionId]: createSessionErrorState(messages.common.networkError),
+      }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
       setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: selectedSkillSnapshots }));
@@ -4392,7 +4470,10 @@ export function ChatShell({
         status: response.status,
       });
       setSessionRunState(targetSessionId, "failed");
-      setErrorBySession((current) => ({ ...current, [targetSessionId]: errorMessage }));
+      setErrorBySession((current) => ({
+        ...current,
+        [targetSessionId]: createSessionErrorState(errorMessage),
+      }));
       setComposerBySession((current) => ({ ...current, [targetSessionId]: inputText }));
       setPendingAttachmentsBySession((current) => ({ ...current, [targetSessionId]: selectedAttachments }));
       setSelectedSkillsBySession((current) => ({ ...current, [targetSessionId]: selectedSkillSnapshots }));
@@ -5034,7 +5115,10 @@ export function ChatShell({
             </div>
           </form>
           {!isCreateSessionOnly && (error || bootstrapError) ? (
-            <p className="mt-1.5 text-[11px] text-red-600">{error ?? bootstrapError}</p>
+            <div className="mt-1.5 text-[11px] text-red-600">
+              <p>{error?.message ?? bootstrapError}</p>
+              <ErrorDiagnosticDetails messages={messages} diagnostic={error?.diagnostic ?? null} />
+            </div>
           ) : null}
         </div>
       </div>

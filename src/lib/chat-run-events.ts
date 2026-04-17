@@ -33,6 +33,7 @@ export type ClientRunActivityEntry =
       phase: "started" | "completed" | "failed" | "aborted" | "pairing_required";
       title: string;
       detail: string | null;
+      diagnostic: string | null;
     };
 
 export type ClientRunHistoryItem = {
@@ -43,6 +44,7 @@ export type ClientRunHistoryItem = {
   status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
   draftAssistantContent: string;
   errorMessage: string | null;
+  errorDiagnostic: string | null;
   startedAt: string;
   updatedAt: string;
   steps: ClientRunActivityEntry[];
@@ -89,6 +91,7 @@ export type ClientChatRunEvent =
       type: "error";
       error: string;
       errorCode: UserFacingErrorCode;
+      errorDiagnostic: string | null;
       createdAt: string;
     }
   | {
@@ -105,6 +108,7 @@ export type ClientChatRunEvent =
       pairing: {
         status: "pairing_required";
         message: string;
+        diagnostic: string | null;
         deviceId: string | null;
         lastPairedAt: string | null;
         pendingRequests: Array<{
@@ -141,6 +145,14 @@ function readString(value: unknown) {
 
 function readNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function shouldExposeDiagnostic(localized: string | null, diagnostic: string | null) {
+  if (!diagnostic) {
+    return null;
+  }
+
+  return localized?.trim() === diagnostic.trim() ? null : diagnostic;
 }
 
 function readNumber(value: unknown) {
@@ -215,6 +227,7 @@ function serializeLifecycleEntry(
       phase: "started",
       title: "Run started",
       detail: null,
+      diagnostic: null,
     } satisfies ClientRunActivityEntry;
   }
 
@@ -228,10 +241,12 @@ function serializeLifecycleEntry(
       phase: "completed",
       title: "Response completed",
       detail: null,
+      diagnostic: null,
     } satisfies ClientRunActivityEntry;
   }
 
   if (event.type === "aborted") {
+    const detail = readNonEmptyString(payload?.reason);
     return {
       kind: "lifecycle",
       key: `lifecycle:${event.runId}:${event.seq}`,
@@ -240,13 +255,16 @@ function serializeLifecycleEntry(
       createdAt: event.createdAt.toISOString(),
       phase: "aborted",
       title: "Run aborted",
-      detail: readNonEmptyString(payload?.reason),
+      detail,
+      diagnostic: null,
     } satisfies ClientRunActivityEntry;
   }
 
   if (event.type === "pairing_required") {
     const pairing = asRecord(payload?.pairing as Prisma.JsonValue | null);
-    const code = inferErrorCode(new Error(readNonEmptyString(pairing?.message) ?? "PAIRING_REQUIRED"));
+    const rawDetail = readNonEmptyString(pairing?.message) ?? "Device pairing required";
+    const code = inferErrorCode(new Error(rawDetail));
+    const detail = messages ? errorFromCode(messages, code).error : rawDetail;
     return {
       kind: "lifecycle",
       key: `lifecycle:${event.runId}:${event.seq}`,
@@ -255,12 +273,14 @@ function serializeLifecycleEntry(
       createdAt: event.createdAt.toISOString(),
       phase: "pairing_required",
       title: "Pairing required",
-      detail: messages ? errorFromCode(messages, code).error : readNonEmptyString(pairing?.message) ?? "Device pairing required",
+      detail,
+      diagnostic: shouldExposeDiagnostic(detail, rawDetail),
     } satisfies ClientRunActivityEntry;
   }
 
   const rawError = readNonEmptyString(payload?.error);
   const errorCode = inferErrorCode(new Error(rawError ?? "Unknown chat run error"));
+  const detail = messages ? errorFromCode(messages, errorCode).error : rawError ?? "Unknown chat run error";
 
   return {
     kind: "lifecycle",
@@ -270,7 +290,8 @@ function serializeLifecycleEntry(
     createdAt: event.createdAt.toISOString(),
     phase: "failed",
     title: "Run failed",
-    detail: messages ? errorFromCode(messages, errorCode).error : rawError ?? "Unknown chat run error",
+    detail,
+    diagnostic: shouldExposeDiagnostic(detail, rawError),
   } satisfies ClientRunActivityEntry;
 }
 
@@ -406,6 +427,10 @@ export function serializeChatRunEvent(event: EventRecord, messages?: Dictionary)
       pairing: {
         status: "pairing_required",
         message: localizedPairing,
+        diagnostic: shouldExposeDiagnostic(
+          localizedPairing,
+          typeof pairing?.message === "string" ? pairing.message : null,
+        ),
         deviceId: typeof pairing?.deviceId === "string" ? pairing.deviceId : null,
         lastPairedAt: typeof pairing?.lastPairedAt === "string" ? pairing.lastPairedAt : null,
         pendingRequests,
@@ -432,6 +457,10 @@ export function serializeChatRunEvent(event: EventRecord, messages?: Dictionary)
       typeof payload?.errorCode === "string"
         ? (payload.errorCode as UserFacingErrorCode)
         : inferErrorCode(new Error(typeof payload?.error === "string" ? payload.error : "Unknown chat run error")),
+    errorDiagnostic: shouldExposeDiagnostic(
+      localizedError,
+      typeof payload?.error === "string" ? payload.error : null,
+    ),
     createdAt,
   };
 }
@@ -457,10 +486,16 @@ export function serializeRunHistoryItem(run: {
     assistantRenderMode: readAssistantRenderMode(donePayload?.renderMode),
     status: run.status,
     draftAssistantContent: run.draftAssistantContent,
-    errorMessage:
+    errorMessage: messages && run.errorMessage
+      ? errorFromCode(messages, inferErrorCode(new Error(run.errorMessage))).error
+      : run.errorMessage,
+    errorDiagnostic:
       messages && run.errorMessage
-        ? errorFromCode(messages, inferErrorCode(new Error(run.errorMessage))).error
-        : run.errorMessage,
+        ? shouldExposeDiagnostic(
+            errorFromCode(messages, inferErrorCode(new Error(run.errorMessage))).error,
+            run.errorMessage,
+          )
+        : null,
     startedAt: run.startedAt.toISOString(),
     updatedAt: run.updatedAt.toISOString(),
     steps: run.events

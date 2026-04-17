@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { SessionStatus } from "@prisma/client";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { serializeRunHistoryItem } from "@/lib/chat-run-events";
-import { toChatMessageViews } from "@/lib/chat-presenter";
-import { serializeActiveRun, serializeSessionSummary } from "@/lib/chat-response";
+import { serializeActiveRun, serializeChatSessionDetail, serializeSessionSummary } from "@/lib/chat-response";
 import { chatRunManager } from "@/lib/chat-run-manager";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
@@ -56,10 +54,10 @@ function buildTitleSource(message: string, attachmentNames: string[], skillNames
 }
 
 export async function GET(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const messages = await getDictionary(await resolveRequestLocale());
+  const messages = await getDictionary(await resolveRequestLocale(request));
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
@@ -72,12 +70,7 @@ export async function GET(
     return NextResponse.json({ error: messages.sessions.sessionNotFound }, { status: 404 });
   }
 
-  return NextResponse.json({
-    session: serializeSessionSummary(session),
-    messages: toChatMessageViews(session.messages, session.attachments),
-    activeRun: serializeActiveRun(session.runs[0] ?? null),
-    runHistory: session.runs.map((run) => serializeRunHistoryItem(run, messages)),
-  });
+  return NextResponse.json(serializeChatSessionDetail(session, messages));
 }
 
 export async function POST(

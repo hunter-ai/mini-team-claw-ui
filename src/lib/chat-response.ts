@@ -1,4 +1,7 @@
-import { ChatRunStatus, SessionStatus } from "@prisma/client";
+import { ChatRunStatus, Prisma, SessionStatus } from "@prisma/client";
+import { serializeRunHistoryItem } from "@/lib/chat-run-events";
+import { toChatMessageViews } from "@/lib/chat-presenter";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 import { mapActiveChatRun } from "@/lib/chat-run-service";
 
 type SessionLike = {
@@ -93,5 +96,47 @@ export function serializeActiveRun(
     errorMessage: snapshot.errorMessage,
     startedAt: snapshot.startedAt.toISOString(),
     updatedAt: snapshot.updatedAt.toISOString(),
+  };
+}
+
+export function serializeChatSessionDetail(
+  session: Omit<SessionLike, "runs"> & {
+    messages: Array<{
+      id: string;
+      role: "USER" | "ASSISTANT" | "SYSTEM";
+      content: string;
+      createdAt: Date;
+      attachmentIds: string[];
+      selectedSkillsJson: Prisma.JsonValue;
+    }>;
+    attachments: AttachmentLike[];
+    runs: Array<{
+      id: string;
+      userMessageId: string | null;
+      assistantMessageId: string | null;
+      status: ChatRunStatus;
+      clientRequestId: string;
+      lastEventSeq: number;
+      draftAssistantContent: string;
+      errorMessage: string | null;
+      startedAt: Date;
+      updatedAt: Date;
+      events: Array<{
+        runId: string;
+        seq: number;
+        type: string;
+        delta: string | null;
+        payloadJson: Prisma.JsonValue | null;
+        createdAt: Date;
+      }>;
+    }>;
+  },
+  messages: Dictionary,
+) {
+  return {
+    session: serializeSessionSummary(session),
+    messages: toChatMessageViews(session.messages, session.attachments),
+    activeRun: serializeActiveRun(session.runs[0] ?? null),
+    runHistory: session.runs.map((run) => serializeRunHistoryItem(run, messages)),
   };
 }

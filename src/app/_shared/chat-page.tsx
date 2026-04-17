@@ -1,10 +1,8 @@
 import { connection } from "next/server";
 import { ChatShell } from "@/components/chat-shell";
-import { serializeRunHistoryItem } from "@/lib/chat-run-events";
-import { serializeSessionSummary } from "@/lib/chat-response";
+import { serializeChatSessionDetail, serializeSessionSummary } from "@/lib/chat-response";
 import { requireUserInLocale } from "@/lib/auth";
 import { getStartupEnv } from "@/lib/env";
-import { toChatMessageViews } from "@/lib/chat-presenter";
 import type { Locale } from "@/lib/i18n/config";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import {
@@ -38,6 +36,7 @@ export async function ChatPage({
   const initialSessions = requestedSession
     ? [requestedSession, ...sessions.filter((session) => session.id !== requestedSession.id)]
     : sessions;
+  const initialSessionDetail = activeSession ? serializeChatSessionDetail(activeSession, messages) : null;
 
   return (
     <main className="h-[100dvh] w-full overflow-hidden p-1.5 sm:p-2">
@@ -48,9 +47,9 @@ export async function ChatPage({
         initialHasMore={pageInfo.hasMore}
         initialNextCursor={pageInfo.nextCursor}
         initialActiveSessionId={activeSession?.id ?? null}
-        initialMessages={activeSession ? toChatMessageViews(activeSession.messages, activeSession.attachments) : []}
-        initialRunHistory={activeSession ? activeSession.runs.map((run) => serializeRunHistoryItem(run)) : []}
-        initialActiveRun={activeSession?.runs[0] ? serializeSessionSummary(activeSession).activeRun : null}
+        initialMessages={initialSessionDetail?.messages ?? []}
+        initialRunHistory={initialSessionDetail?.runHistory ?? []}
+        initialActiveRun={initialSessionDetail?.activeRun ?? null}
         lazycatFilePickerEnabled={env.ENABLE_LAZYCAT_FILE_PICKER}
         user={{
           username: user.username,
