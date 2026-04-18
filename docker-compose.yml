@@ -1,5 +1,6 @@
 services:
   web:
+    image: ihunterdev/miniteamclawui:latest
     build: .
     env_file:
       - .env
