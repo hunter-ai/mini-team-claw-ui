@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import { t } from "@/lib/i18n/messages";
+import { normalizeOpenClawAgentId } from "@/lib/user-form";
 
 type AdminUser = {
   id: string;
@@ -42,7 +43,7 @@ export function AdminUserManager({
   const [form, setForm] = useState({
     username: "",
     password: "",
-    openclawAgentId: "",
+    openclawAgentId: "main",
     role: "MEMBER",
   });
 
@@ -149,7 +150,7 @@ export function AdminUserManager({
       return;
     }
 
-    setForm({ username: "", password: "", openclawAgentId: "", role: "MEMBER" });
+    setForm({ username: "", password: "", openclawAgentId: "main", role: "MEMBER" });
     setIsCreateModalOpen(false);
     setMessage(messages.admin.memberCreated);
     await refreshUsers();
@@ -180,11 +181,6 @@ export function AdminUserManager({
 
   async function resetPassword(user: AdminUser) {
     const password = passwordDrafts[user.id]?.trim() ?? "";
-    if (password.length < 8) {
-      setResetError(messages.admin.passwordTooShort);
-      return;
-    }
-
     setMessage(null);
     setResetError(null);
     setActionUserId(user.id);
@@ -252,7 +248,10 @@ export function AdminUserManager({
         </button>
       </div>
       <div className="mt-5 space-y-3">
-        {users.map((user) => (
+        {users.map((user) => {
+          const deleteDisabled = user.isActive || actionUserId === user.id;
+
+          return (
           <div key={user.id} className="ui-surface-muted rounded-2xl px-4 py-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -288,9 +287,10 @@ export function AdminUserManager({
                 <button
                   type="button"
                   onClick={() => deleteUser(user)}
-                  disabled={user.isActive || actionUserId === user.id}
+                  disabled={deleteDisabled}
+                  aria-disabled={deleteDisabled}
                   title={user.isActive ? messages.admin.onlyDisabledUsersCanBeDeleted : undefined}
-                  className="ui-button-danger ui-button-chip disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)]"
+                  className="ui-button-danger ui-button-chip disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-[color:var(--border-subtle)] disabled:bg-transparent disabled:text-[color:var(--text-quaternary)] disabled:opacity-55"
                 >
                   {messages.admin.deleteUser}
                 </button>
@@ -300,7 +300,8 @@ export function AdminUserManager({
               <p className="mt-2 text-xs text-[color:var(--text-quaternary)]">{messages.admin.onlyDisabledUsersCanBeDeleted}</p>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -326,39 +327,61 @@ export function AdminUserManager({
           <p className="ui-field-note mt-1">{messages.admin.createMemberModalDescription}</p>
         </div>
         <form className="grid gap-4 md:grid-cols-2" onSubmit={createUser}>
-          <input
-            ref={createUsernameInputRef}
-            value={form.username}
-            onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-            className="ui-input"
-            placeholder={messages.admin.usernamePlaceholder}
-            required
-          />
-          <input
-            value={form.openclawAgentId}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, openclawAgentId: event.target.value }))
-            }
-            className="ui-input"
-            placeholder={messages.admin.agentIdPlaceholder}
-            required
-          />
-          <input
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            className="ui-input"
-            placeholder={messages.admin.passwordPlaceholder}
-            required
-          />
-          <select
-            value={form.role}
-            onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as "ADMIN" | "MEMBER" }))}
-            className="ui-input"
-          >
-            <option value="MEMBER">{messages.admin.member}</option>
-            <option value="ADMIN">{messages.admin.admin}</option>
-          </select>
+          <div className="space-y-1.5">
+            <input
+              ref={createUsernameInputRef}
+              value={form.username}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, username: event.target.value }))
+              }
+              className="ui-input"
+              placeholder={messages.admin.usernamePlaceholder}
+              required
+            />
+            <p className="ui-field-note">{messages.admin.usernameHint}</p>
+          </div>
+          <div className="space-y-1.5">
+            <input
+              value={form.openclawAgentId}
+              onChange={(event) => {
+                const value = event.target.value;
+                setForm((current) => ({ ...current, openclawAgentId: value }));
+              }}
+              onBlur={(event) => {
+                const normalized = normalizeOpenClawAgentId(event.target.value);
+                setForm((current) => ({ ...current, openclawAgentId: normalized || "main" }));
+              }}
+              className="ui-input"
+              placeholder={messages.admin.agentIdPlaceholder}
+              required
+            />
+            <p className="ui-field-note">{messages.admin.agentIdHint}</p>
+          </div>
+          <div className="space-y-1.5">
+            <input
+              type="password"
+              value={form.password}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, password: event.target.value }))
+              }
+              className="ui-input"
+              placeholder={messages.admin.passwordPlaceholder}
+              required
+            />
+            <p className="ui-field-note">{messages.admin.passwordHint}</p>
+          </div>
+          <div className="space-y-1.5">
+            <select
+              value={form.role}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, role: event.target.value as "ADMIN" | "MEMBER" }))
+              }
+              className="ui-input"
+            >
+              <option value="MEMBER">{messages.admin.member}</option>
+              <option value="ADMIN">{messages.admin.admin}</option>
+            </select>
+          </div>
           {createError ? <p className="text-sm text-red-600 md:col-span-2">{createError}</p> : null}
           <div className="ui-dialog-actions md:col-span-2">
             <button
@@ -413,14 +436,14 @@ export function AdminUserManager({
             <input
               ref={resetPasswordInputRef}
               type="password"
-              minLength={8}
               value={passwordDrafts[resetPasswordTargetUser.id] ?? ""}
-              onChange={(event) =>
+              onChange={(event) => {
+                setResetError(null);
                 setPasswordDrafts((current) => ({
                   ...current,
                   [resetPasswordTargetUser.id]: event.target.value,
-                }))
-              }
+                }));
+              }}
               className="ui-input"
               placeholder={messages.admin.newPasswordPlaceholder}
             />

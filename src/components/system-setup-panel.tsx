@@ -6,6 +6,7 @@ import { LOCALE_HEADER_NAME, type Locale } from "@/lib/i18n/config";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import { localizeHref } from "@/lib/i18n/routing";
 import type { SetupStatus } from "@/lib/setup";
+import { normalizeOpenClawAgentId } from "@/lib/user-form";
 
 function gatewayStatusText(messages: Dictionary, status: SetupStatus["gatewayStatus"]) {
   switch (status) {
@@ -587,31 +588,48 @@ openclaw devices approve ${status.pairing.pendingRequests[0]?.requestId ?? "<req
           </div>
         ) : (
           <form className="mt-5 grid gap-4 md:grid-cols-3" onSubmit={createFirstAdmin}>
-            <input
-              value={adminForm.username}
-              onChange={(event) => setAdminForm((current) => ({ ...current, username: event.target.value }))}
-              className="ui-input"
-              placeholder={messages.setup.username}
-              required
-            />
-            <input
-              type="password"
-              value={adminForm.password}
-              onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
-              className="ui-input"
-              placeholder={messages.setup.password}
-              minLength={8}
-              required
-            />
-            <input
-              value={adminForm.openclawAgentId}
-              onChange={(event) =>
-                setAdminForm((current) => ({ ...current, openclawAgentId: event.target.value }))
-              }
-              className="ui-input"
-              placeholder={messages.setup.agentId}
-              required
-            />
+            <div className="space-y-1.5">
+              <input
+                value={adminForm.username}
+                onChange={(event) =>
+                  setAdminForm((current) => ({ ...current, username: event.target.value }))
+                }
+                className="ui-input"
+                placeholder={messages.setup.username}
+                required
+              />
+              <p className="ui-field-note">{messages.setup.usernameHint}</p>
+            </div>
+            <div className="space-y-1.5">
+              <input
+                type="password"
+                value={adminForm.password}
+                onChange={(event) =>
+                  setAdminForm((current) => ({ ...current, password: event.target.value }))
+                }
+                className="ui-input"
+                placeholder={messages.setup.password}
+                required
+              />
+              <p className="ui-field-note">{messages.setup.passwordHint}</p>
+            </div>
+            <div className="space-y-1.5">
+              <input
+                value={adminForm.openclawAgentId}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAdminForm((current) => ({ ...current, openclawAgentId: value }));
+                }}
+                onBlur={(event) => {
+                  const normalized = normalizeOpenClawAgentId(event.target.value);
+                  setAdminForm((current) => ({ ...current, openclawAgentId: normalized || "main" }));
+                }}
+                className="ui-input"
+                placeholder={messages.setup.agentId}
+                required
+              />
+              <p className="ui-field-note">{messages.setup.agentIdHint}</p>
+            </div>
             <button
               type="submit"
               disabled={creatingAdmin}
