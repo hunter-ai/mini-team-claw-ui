@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 import type {
   ClientAssistantRenderMode,
   ClientChatRunEvent,
+  ClientCompletionIssue,
   ClientRunActivityEntry,
   ClientRunHistoryItem,
 } from "@/lib/chat-run-events";
@@ -771,6 +772,10 @@ function buildRenderableAssistantBlocks(args: {
   return blocks;
 }
 
+function shouldRenderCompletionIssueCard(run: ClientRunHistoryItem | null, content: string) {
+  return Boolean(run?.completionIssue && !content.trim());
+}
+
 function mergeRunActivityEntries(
   current: ClientRunActivityEntry[],
   incoming: ClientRunActivityEntry,
@@ -921,6 +926,41 @@ function ErrorDiagnosticDetails({
         {diagnostic}
       </pre>
     </details>
+  );
+}
+
+function EmptyCompletionIssueCard({
+  issue,
+  isAdmin,
+  messages,
+}: {
+  issue: ClientCompletionIssue;
+  isAdmin: boolean;
+  messages: Dictionary;
+}) {
+  return (
+    <div className="rounded-[0.75rem] border border-[color:var(--border-subtle)] bg-[color:var(--surface-subtle)] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="ui-badge rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
+          {messages.chat.emptyCompletionBadge}
+        </span>
+        <span className="text-xs font-medium text-[color:var(--text-primary)]">
+          {messages.chat.emptyCompletionTitle}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
+        {messages.chat.emptyCompletionDescription}
+      </p>
+      <p className="mt-2 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
+        {isAdmin ? messages.chat.emptyCompletionAdminHint : messages.chat.emptyCompletionMemberHint}
+      </p>
+      {!isAdmin ? (
+        <p className="mt-2 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
+          {messages.chat.emptyCompletionScreenshotHint}
+        </p>
+      ) : null}
+      <ErrorDiagnosticDetails messages={messages} diagnostic={issue.diagnostic} />
+    </div>
   );
 }
 
@@ -1940,11 +1980,13 @@ function ComposerContextUsage({
 const ChatMessageItem = memo(function ChatMessageItem({
   item,
   segmentation,
+  viewerRole,
   locale,
   messages,
 }: {
   item: RenderableMessage;
   segmentation: RunContentSegmentation | null;
+  viewerRole: UserRole;
   locale: Locale;
   messages: Dictionary;
 }) {
@@ -1954,6 +1996,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   const createdAt = item.kind === "message" ? item.message.createdAt : item.run.updatedAt;
   const skills = item.kind === "message" ? item.message.skills : [];
   const attachments = item.kind === "message" ? item.message.attachments : [];
+  const showCompletionIssueCard = !isUser && shouldRenderCompletionIssueCard(run, content);
   const assistantBlocks = useMemo(
     () =>
       !isUser
@@ -1980,6 +2023,13 @@ const ChatMessageItem = memo(function ChatMessageItem({
             <MessageBody content={content} isUser messages={messages} />
           ) : (
             <div className="space-y-3">
+              {showCompletionIssueCard && run?.completionIssue ? (
+                <EmptyCompletionIssueCard
+                  issue={run.completionIssue}
+                  isAdmin={viewerRole === UserRole.ADMIN}
+                  messages={messages}
+                />
+              ) : null}
               {assistantBlocks.map((block) => {
                 if (block.kind === "markdown_text") {
                   return <AssistantTextBlock key={block.key} content={block.content} renderMode={block.renderMode} messages={messages} streaming={block.streaming ? true : false} />;
@@ -2669,6 +2719,7 @@ export function ChatShell({
           assistantRenderMode: "markdown",
           status: activeRun.status,
           draftAssistantContent: activeRun.draftAssistantContent,
+          completionIssue: null,
           errorMessage: activeRun.errorMessage,
           errorDiagnostic: null,
           startedAt: activeRun.startedAt,
@@ -3308,6 +3359,7 @@ export function ChatShell({
           existing
             ? {
                 status: terminalRunStatus,
+                completionIssue: payload.type === "done" ? payload.completionIssue : existing.completionIssue,
                 errorMessage: terminalRunError,
                 updatedAt: payload.createdAt,
                 steps: mergeRunActivityEntries(existing.steps, activityEntry),
@@ -5247,6 +5299,7 @@ export function ChatShell({
                 locale={locale}
                 messages={messages}
                 segmentation={item.run ? contentSegmentsByRunId[item.run.runId] ?? null : null}
+                viewerRole={user.role}
               />
             ))}
 

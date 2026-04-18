@@ -4,6 +4,10 @@ import type { UserFacingErrorCode } from "@/lib/user-facing-errors";
 import { errorFromCode, inferErrorCode } from "@/lib/user-facing-errors";
 
 export type ClientAssistantRenderMode = "markdown" | "plain_text";
+export type ClientCompletionIssue = {
+  code: "empty_text";
+  diagnostic: string | null;
+};
 
 export type ClientToolEventPayload = {
   key: string;
@@ -43,6 +47,7 @@ export type ClientRunHistoryItem = {
   assistantRenderMode: ClientAssistantRenderMode;
   status: "STARTING" | "STREAMING" | "COMPLETED" | "FAILED" | "ABORTED";
   draftAssistantContent: string;
+  completionIssue: ClientCompletionIssue | null;
   errorMessage: string | null;
   errorDiagnostic: string | null;
   startedAt: string;
@@ -83,6 +88,7 @@ export type ClientChatRunEvent =
       seq: number;
       type: "done";
       content: string;
+      completionIssue: ClientCompletionIssue | null;
       createdAt: string;
     }
   | {
@@ -161,6 +167,18 @@ function readNumber(value: unknown) {
 
 function readAssistantRenderMode(value: unknown): ClientAssistantRenderMode {
   return value === "plain_text" ? "plain_text" : "markdown";
+}
+
+function readCompletionIssue(value: unknown): ClientCompletionIssue | null {
+  const issue = asRecord(value as Prisma.JsonValue | null);
+  if (!issue || issue.code !== "empty_text") {
+    return null;
+  }
+
+  return {
+    code: "empty_text",
+    diagnostic: readString(issue.diagnostic),
+  };
 }
 
 function readToolPayload(value: Prisma.JsonValue | null): ClientToolEventPayload | null {
@@ -377,6 +395,7 @@ export function serializeChatRunEvent(event: EventRecord, messages?: Dictionary)
       seq: event.seq,
       type: "done",
       content: typeof payload?.content === "string" ? payload.content : "",
+      completionIssue: readCompletionIssue(payload?.completionIssue),
       createdAt,
     };
   }
@@ -486,6 +505,7 @@ export function serializeRunHistoryItem(run: {
     assistantRenderMode: readAssistantRenderMode(donePayload?.renderMode),
     status: run.status,
     draftAssistantContent: run.draftAssistantContent,
+    completionIssue: readCompletionIssue(donePayload?.completionIssue),
     errorMessage: messages && run.errorMessage
       ? errorFromCode(messages, inferErrorCode(new Error(run.errorMessage))).error
       : run.errorMessage,

@@ -45,6 +45,11 @@ type ContentCheckpointPayload = {
   textLength: number;
 };
 
+export type ChatRunCompletionIssue = {
+  code: "empty_text";
+  diagnostic: string | null;
+};
+
 export class ActiveChatRunConflictError extends Error {
   constructor(message = "A response is already in progress for this session.") {
     super(message);
@@ -535,6 +540,7 @@ export async function completeChatRun(
   runId: string,
   content: string,
   renderMode: "markdown" | "plain_text" = "markdown",
+  completionIssue: ChatRunCompletionIssue | null = null,
 ) {
   return prisma.$transaction(async (tx) => {
     const run = await tx.chatRun.findUniqueOrThrow({
@@ -553,7 +559,8 @@ export async function completeChatRun(
     }
 
     const nextSeq = run.lastEventSeq + 1;
-    const finalContent = content || run.draftAssistantContent || "OpenClaw completed without returning text.";
+    const finalContent = content || run.draftAssistantContent;
+    const persistedCompletionIssue = !finalContent ? completionIssue : null;
 
     const event = await tx.chatRunEvent.create({
       data: {
@@ -563,6 +570,7 @@ export async function completeChatRun(
         payloadJson: {
           content: finalContent,
           renderMode,
+          ...(persistedCompletionIssue ? { completionIssue: persistedCompletionIssue } : {}),
         },
       },
     });

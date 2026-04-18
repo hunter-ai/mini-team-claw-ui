@@ -38,6 +38,10 @@ export type ChatResult = {
   runId: string | null;
   status: string | null;
   renderMode: "markdown" | "plain_text";
+  completionIssue: {
+    code: "empty_text";
+    diagnostic: string | null;
+  } | null;
 };
 
 export type GatewayToolEventStatus = "started" | "running" | "completed" | "failed";
@@ -85,6 +89,10 @@ type GatewayChatTerminalEvent =
       type: "final";
       content: string;
       renderMode: "markdown" | "plain_text";
+      completionIssue: {
+        code: "empty_text";
+        diagnostic: string | null;
+      } | null;
     }
   | {
       type: "error";
@@ -472,12 +480,18 @@ function extractChatTerminalEvent(payload: Record<string, unknown> | undefined):
       readNestedString(messageRecord, "text", "content", "message") ??
       extractTextFromMessageContent(messageRecord?.content) ??
       readNestedString(root, "reply", "content", "message") ??
-      "OpenClaw completed without returning text.";
+      "";
 
     return {
       type: "final",
       content,
       renderMode: "plain_text",
+      completionIssue: content
+        ? null
+        : {
+            code: "empty_text",
+            diagnostic: "OpenClaw completed without returning text.",
+          },
     };
   }
 
@@ -914,6 +928,7 @@ export class OpenClawGatewayClient {
     let runId: string | null = null;
     let status: string | null = null;
     let renderMode: ChatResult["renderMode"] = "markdown";
+    let completionIssue: ChatResult["completionIssue"] = null;
     let ignoredEventCount = 0;
     let acceptedEventCount = 0;
     const bufferedEvents: GatewayEvent[] = [];
@@ -962,6 +977,7 @@ export class OpenClawGatewayClient {
             runId,
             status,
             renderMode: "markdown",
+            completionIssue: null,
           } satisfies ChatResult;
         }
 
@@ -1023,6 +1039,7 @@ export class OpenClawGatewayClient {
         output = chatTerminalEvent.content;
         status = "ok";
         renderMode = chatTerminalEvent.renderMode;
+        completionIssue = !output && !completionIssue ? chatTerminalEvent.completionIssue : null;
         return true;
       }
 
@@ -1077,6 +1094,7 @@ export class OpenClawGatewayClient {
           runId,
           status,
           renderMode,
+          completionIssue: !output ? completionIssue : null,
         } satisfies ChatResult;
       }
     }
@@ -1116,7 +1134,13 @@ export class OpenClawGatewayClient {
       outputLength: output.length,
     });
 
-    return { content: output, runId, status, renderMode } satisfies ChatResult;
+    return {
+      content: output,
+      runId,
+      status,
+      renderMode,
+      completionIssue: !output ? completionIssue : null,
+    } satisfies ChatResult;
   }
 
   async listPairingRequests() {

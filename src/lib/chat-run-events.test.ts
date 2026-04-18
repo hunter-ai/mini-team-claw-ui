@@ -62,6 +62,71 @@ test("serializeChatRunEvent includes localized message and raw diagnostic", () =
   assert.equal(localized.pairing.diagnostic, "[openclaw] connect rejected: device pairing required.");
 });
 
+test("serializeChatRunEvent preserves empty completion diagnostics on done events", () => {
+  const event = {
+    runId: "run_1",
+    seq: 3,
+    type: "done",
+    delta: null,
+    payloadJson: {
+      content: "",
+      renderMode: "plain_text",
+      completionIssue: {
+        code: "empty_text",
+        diagnostic: "OpenClaw completed without returning text.",
+      },
+    },
+    createdAt: new Date("2026-04-16T10:00:06.000Z"),
+  };
+
+  const serialized = serializeChatRunEvent(event, zh);
+  assert(serialized && serialized.type === "done");
+  assert.equal(serialized.content, "");
+  assert.deepEqual(serialized.completionIssue, {
+    code: "empty_text",
+    diagnostic: "OpenClaw completed without returning text.",
+  });
+});
+
+test("serializeRunHistoryItem preserves empty completion diagnostics", () => {
+  const run = {
+    id: "run_2",
+    userMessageId: "msg_user",
+    assistantMessageId: "msg_assistant",
+    status: "COMPLETED" as const,
+    draftAssistantContent: "",
+    errorMessage: null,
+    startedAt: new Date("2026-04-16T10:00:00.000Z"),
+    updatedAt: new Date("2026-04-16T10:00:06.000Z"),
+    events: [
+      {
+        runId: "run_2",
+        seq: 2,
+        type: "done",
+        delta: null,
+        payloadJson: {
+          content: "",
+          renderMode: "plain_text",
+          completionIssue: {
+            code: "empty_text",
+            diagnostic: "OpenClaw completed without returning text.",
+          },
+        },
+        createdAt: new Date("2026-04-16T10:00:06.000Z"),
+      },
+    ],
+  };
+
+  const serialized = serializeRunHistoryItem(run, zh);
+
+  assert.deepEqual(serialized.completionIssue, {
+    code: "empty_text",
+    diagnostic: "OpenClaw completed without returning text.",
+  });
+  assert.equal(serialized.draftAssistantContent, "");
+  assert.equal(serialized.errorMessage, null);
+});
+
 test("serializeChatSessionDetail reuses localized run history for initial chat payload", () => {
   const detail = serializeChatSessionDetail(
     {
