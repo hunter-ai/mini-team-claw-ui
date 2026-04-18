@@ -1,18 +1,32 @@
 import { NextResponse } from "next/server";
 import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
-import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
+import { normalizeOpenClawAgentId, validatePasswordUpdateInput } from "@/lib/user-form";
 
-const patchSchema = z.object({
-  openclawAgentId: z.string().min(1).optional(),
-  password: z.string().min(8).optional(),
-  role: z.enum([UserRole.ADMIN, UserRole.MEMBER]).optional(),
-  isActive: z.boolean().optional(),
-});
+function isPatchPayload(value: unknown): value is {
+  openclawAgentId?: string;
+  password?: string;
+  role?: UserRole;
+  isActive?: boolean;
+} {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    (candidate.openclawAgentId === undefined || typeof candidate.openclawAgentId === "string") &&
+    (candidate.password === undefined || typeof candidate.password === "string") &&
+    (candidate.role === undefined ||
+      candidate.role === UserRole.ADMIN ||
+      candidate.role === UserRole.MEMBER) &&
+    (candidate.isActive === undefined || typeof candidate.isActive === "boolean")
+  );
+}
 
 const userSelect = {
   id: true,
@@ -41,9 +55,42 @@ export async function PATCH(
     return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
   const { userId } = await params;
-  const payload = patchSchema.safeParse(await request.json().catch(() => null));
-  if (!payload.success) {
+  const rawPayload = await request.json().catch(() => null);
+  if (!isPatchPayload(rawPayload)) {
     return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
+  }
+
+  if (rawPayload.password !== undefined) {
+    const passwordPayload = validatePasswordUpdateInput(
+      { password: rawPayload.password },
+      messages,
+    );
+    if (!passwordPayload.success) {
+      return NextResponse.json(
+        { error: passwordPayload.error, fieldErrors: passwordPayload.fieldErrors },
+        { status: 400 },
+      );
+    }
+  }
+
+  const payload = {
+    openclawAgentId:
+      rawPayload.openclawAgentId === undefined
+        ? undefined
+        : normalizeOpenClawAgentId(rawPayload.openclawAgentId),
+    password: rawPayload.password,
+    role: rawPayload.role,
+    isActive: rawPayload.isActive,
+  };
+
+  if (rawPayload.openclawAgentId !== undefined && !payload.openclawAgentId) {
+    return NextResponse.json(
+      {
+        error: messages.users.agentIdRequired,
+        fieldErrors: { openclawAgentId: messages.users.agentIdRequired },
+      },
+      { status: 400 },
+    );
   }
 
   const existingUser = await prisma.user.findUnique({
@@ -59,8 +106,8 @@ export async function PATCH(
     return NextResponse.json({ error: messages.users.userNotFound }, { status: 404 });
   }
 
-  const nextRole = payload.data.role ?? existingUser.role;
-  const nextIsActive = payload.data.isActive ?? existingUser.isActive;
+  const nextRole = payload.role ?? existingUser.role;
+  const nextIsActive = payload.isActive ?? existingUser.isActive;
 
   if (existingUser.role === UserRole.ADMIN && existingUser.isActive && (!nextIsActive || nextRole !== UserRole.ADMIN)) {
     const activeAdminCount = await countActiveAdmins();
@@ -78,13 +125,13 @@ export async function PATCH(
     role?: UserRole;
     isActive?: boolean;
   } = {
-    openclawAgentId: payload.data.openclawAgentId,
-    role: payload.data.role,
-    isActive: payload.data.isActive,
+    openclawAgentId: payload.openclawAgentId,
+    role: payload.role,
+    isActive: payload.isActive,
   };
 
-  if (payload.data.password) {
-    updateData.passwordHash = await hash(payload.data.password);
+  if (payload.password) {
+    updateData.passwordHash = await hash(payload.password);
   }
 
   const updatedUser = await prisma.$transaction(async (tx) => {
@@ -94,7 +141,7 @@ export async function PATCH(
       select: userSelect,
     });
 
-    if (payload.data.password) {
+    if (payload.password) {
       await tx.userSession.deleteMany({
         where: { userId },
       });

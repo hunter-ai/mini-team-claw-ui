@@ -246,6 +246,11 @@ a {
   background: #fee2e2;
 }
 
+.ui-button-danger:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .ui-badge {
   border: 1px solid var(--border-subtle);
   background: var(--surface-subtle);

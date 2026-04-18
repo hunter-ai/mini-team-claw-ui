@@ -121,6 +121,10 @@ const en = {
     usernamePlaceholder: "username",
     agentIdPlaceholder: "agent id",
     passwordPlaceholder: "password",
+    usernameHint: "This member signs in with this local username. Enter at least 3 characters and keep it unique.",
+    agentIdHint:
+      "Enter the OpenClaw agent name used for this member. The field converts to lowercase on blur and defaults to main. If you are unsure, ask OpenClaw which agents exist and what their Agent IDs are first.",
+    passwordHint: "Set the local password for this member. It must be at least 8 characters.",
     member: "Member",
     admin: "Admin",
     createMemberAction: "Create member",
@@ -260,6 +264,10 @@ const en = {
     username: "Username",
     password: "Password",
     agentId: "Agent ID",
+    usernameHint: "This administrator signs in with this local username. Enter at least 3 characters and keep it unique.",
+    passwordHint: "Set the local password for this administrator. It must be at least 8 characters.",
+    agentIdHint:
+      "Enter the OpenClaw agent name used for this account. The field converts to lowercase on blur and defaults to main. If you are unsure, ask OpenClaw which agents exist and what their Agent IDs are first.",
     createFirstAdmin: "Create administrator",
     firstAdminCreated: "Administrator created",
     firstAdminCreateFailed: "We could not create the administrator",
@@ -442,6 +450,9 @@ const en = {
   },
   users: {
     usernameExists: "Username already exists",
+    usernameTooShort: "Username must be at least 3 characters.",
+    passwordTooShort: "Password must be at least 8 characters.",
+    agentIdRequired: "Agent ID is required.",
     userNotFound: "User not found",
     activeAdminMustRemain: "At least one active admin must remain.",
     onlyDisabledCanBeDeleted: "Only disabled users can be deleted.",

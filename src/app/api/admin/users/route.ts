@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
 import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
-import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getDictionary } from "@/lib/i18n/dictionary";
 import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
-
-const createSchema = z.object({
-  username: z.string().min(3),
-  password: z.string().min(8),
-  openclawAgentId: z.string().min(1),
-  role: z.enum([UserRole.ADMIN, UserRole.MEMBER]).default(UserRole.MEMBER),
-});
+import { validateCreateUserInput } from "@/lib/user-form";
 
 function serializeAdminUser(user: {
   id: string;
@@ -74,9 +67,13 @@ export async function POST(request: Request) {
   if (!currentUser || currentUser.role !== UserRole.ADMIN) {
     return NextResponse.json({ error: messages.auth.unauthorized }, { status: 401 });
   }
-  const payload = createSchema.safeParse(await request.json().catch(() => null));
+  const rawPayload = await request.json().catch(() => null);
+  const payload = validateCreateUserInput(rawPayload, messages, { includeRole: true });
   if (!payload.success) {
-    return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
+    return NextResponse.json(
+      { error: payload.error, fieldErrors: payload.fieldErrors },
+      { status: 400 },
+    );
   }
 
   const existing = await prisma.user.findUnique({

@@ -121,6 +121,10 @@ const zh = {
     usernamePlaceholder: "用户名",
     agentIdPlaceholder: "agent id",
     passwordPlaceholder: "密码",
+    usernameHint: "成员使用这个用户名登录本地账号。至少填写 3 个字符，且不能与现有用户名重复。",
+    agentIdHint:
+      "填写龙虾里的 Agent 名称对应的 ID。系统会在失焦时自动转成小写，默认可先用 main；如果不确定，可以先向龙虾提问“你有哪些 Agent？Agent ID 分别是什么？”。",
+    passwordHint: "填写这个成员的本地登录密码，至少需要 8 个字符。",
     member: "成员",
     admin: "管理员",
     createMemberAction: "创建成员",
@@ -260,6 +264,10 @@ const zh = {
     username: "用户名",
     password: "密码",
     agentId: "Agent ID",
+    usernameHint: "管理员使用这个用户名登录本地账号。至少填写 3 个字符，且不能与现有用户名重复。",
+    passwordHint: "填写这个管理员的本地登录密码，至少需要 8 个字符。",
+    agentIdHint:
+      "填写龙虾里的 Agent 名称对应的 ID。系统会在失焦时自动转成小写，默认可先用 main；如果不确定，可以先向龙虾提问“你有哪些 Agent？Agent ID 分别是什么？”。",
     createFirstAdmin: "创建管理员",
     firstAdminCreated: "管理员已创建",
     firstAdminCreateFailed: "管理员创建失败",
@@ -442,6 +450,9 @@ const zh = {
   },
   users: {
     usernameExists: "用户名已存在",
+    usernameTooShort: "用户名至少需要 3 个字符。",
+    passwordTooShort: "密码至少需要 8 个字符。",
+    agentIdRequired: "请填写 Agent ID。",
     userNotFound: "未找到用户",
     activeAdminMustRemain: "至少需要保留一个启用中的管理员。",
     onlyDisabledCanBeDeleted: "只能删除已停用的用户。",

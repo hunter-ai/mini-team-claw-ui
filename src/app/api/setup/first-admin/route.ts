@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { hash } from "@node-rs/argon2";
 import { UserRole } from "@prisma/client";
-import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getStartupEnv } from "@/lib/env";
 import { getDictionary } from "@/lib/i18n/dictionary";
@@ -9,12 +8,7 @@ import { resolveRequestLocale } from "@/lib/i18n/request-locale";
 import { prisma } from "@/lib/prisma";
 import { getSetupStatus } from "@/lib/setup";
 import { errorFromCode } from "@/lib/user-facing-errors";
-
-const createSchema = z.object({
-  username: z.string().min(3),
-  password: z.string().min(8),
-  openclawAgentId: z.string().min(1),
-});
+import { validateCreateUserInput } from "@/lib/user-form";
 
 export async function POST(request: Request) {
   const locale = await resolveRequestLocale(request);
@@ -33,9 +27,13 @@ export async function POST(request: Request) {
     return NextResponse.json(errorFromCode(messages, "active_admin_exists"), { status: 409 });
   }
 
-  const payload = createSchema.safeParse(await request.json().catch(() => null));
+  const rawPayload = await request.json().catch(() => null);
+  const payload = validateCreateUserInput(rawPayload, messages);
   if (!payload.success) {
-    return NextResponse.json({ error: messages.auth.invalidPayload }, { status: 400 });
+    return NextResponse.json(
+      { error: payload.error, fieldErrors: payload.fieldErrors },
+      { status: 400 },
+    );
   }
 
   const existing = await prisma.user.findUnique({
